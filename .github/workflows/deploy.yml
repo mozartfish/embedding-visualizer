@@ -14,7 +14,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: npm
 
       - name: Install dependencies
@@ -22,7 +22,7 @@ jobs:
 
       - name: Build
         env:
-          BASE_PATH: '/your-repo-name'
+          BASE_PATH: '/embedding-visualizer'
         run: npm run build
 
       - name: Upload Artifacts
