@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { base } from '$app/paths';
   import * as d3 from 'd3';
 
   let mainSvg;
@@ -396,8 +397,11 @@
   // Function to load data from your JSON files
   const loadData = async (filename = selectedFile) => {
     try {
-      // Load from your static/data directory
-      const response = await fetch(`/data/${filename}`);
+      // FIXED: Use base path for GitHub Pages deployment
+      const url = `${base}/data/${filename}`;
+      console.log('Attempting to fetch from:', url);
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
