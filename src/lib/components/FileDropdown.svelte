@@ -1,4 +1,4 @@
-<script>
+<!-- <script>
   import { onMount } from 'svelte';
 
   // Svelte 5 runes syntax
@@ -118,4 +118,4 @@
   button:hover {
     background-color: #0056b3;
   }
-</style>
+</style> -->
