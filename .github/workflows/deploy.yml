@@ -22,7 +22,7 @@ jobs:
 
       - name: Build
         env:
-          BASE_PATH: '/embedding-visualizer'
+          BASE_PATH: '/embedding-visualizer'  # Corrected spelling
         run: npm run build
 
       - name: Upload Artifacts
