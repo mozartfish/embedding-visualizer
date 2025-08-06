@@ -1,7 +1,8 @@
-// To this:
+/** @type {import('tailwindcss').Config} */
 export default {
-	plugins: {
-		'@tailwindcss/postcss': {},
-		autoprefixer: {}
-	}
+	content: ['./src/**/*.{html,js,svelte,ts}'],
+	theme: {
+		extend: {}
+	},
+	plugins: []
 };
