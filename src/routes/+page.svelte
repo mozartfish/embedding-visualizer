@@ -9,6 +9,12 @@
   let isLassoing = false;
   let data = [];
   let selectedFile = 'umap-name-etymology.json';
+  
+  // Zoom and interaction variables
+  let zoomBehavior;
+  let currentTransform = d3.zoomIdentity;
+  let adjustedData = [];
+  let interactionMode = 'zoom'; // 'zoom' or 'lasso'
 
   // Available data files based on your directory structure
   const availableFiles = [
@@ -65,6 +71,104 @@
     return inside;
   };
 
+  // Simplified collision detection for high zoom levels
+  const adjustPointPositionsSimple = (transformedData, zoomScale, pointRadius = 4) => {
+    const minDistance = Math.max(pointRadius * 2, (pointRadius * 2) / Math.sqrt(zoomScale));
+    const nodes = transformedData.map(d => ({ ...d }));
+    
+    // Simple collision detection and resolution
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < minDistance && distance > 0) {
+          // Push points apart
+          const pushDistance = (minDistance - distance) / 2;
+          const pushX = (dx / distance) * pushDistance;
+          const pushY = (dy / distance) * pushDistance;
+          
+          nodes[i].x += pushX;
+          nodes[i].y += pushY;
+          nodes[j].x -= pushX;
+          nodes[j].y -= pushY;
+        }
+      }
+    }
+    
+    return nodes;
+  };
+  const adjustPointPositions = (data, transform, xScale, yScale) => {
+    const nodes = data.map(d => ({
+      ...d,
+      x: transform.rescaleX(xScale)(d.x),
+      y: transform.rescaleY(yScale)(d.y),
+      originalX: d.x,
+      originalY: d.y,
+      fx: null,
+      fy: null
+    }));
+
+    // Calculate minimum distance based on zoom level
+    const minDistance = Math.max(8, 12 / transform.k);
+    
+    // Check for overlaps and apply force simulation if needed
+    const overlaps = checkForOverlaps(nodes, minDistance);
+    
+    if (overlaps.length === 0) {
+      return nodes; // No overlaps, return original positions
+    }
+
+    // Create force simulation for overlapping points only
+    const overlappingNodes = new Set();
+    overlaps.forEach(([i, j]) => {
+      overlappingNodes.add(nodes[i]);
+      overlappingNodes.add(nodes[j]);
+    });
+
+    if (overlappingNodes.size === 0) return nodes;
+
+    const simulationNodes = Array.from(overlappingNodes);
+    
+    // Run a quick force simulation
+    const forceSimulation = d3.forceSimulation(simulationNodes)
+      .force("collision", d3.forceCollide().radius(minDistance / 2))
+      .force("center", d3.forceCenter().strength(0.1))
+      .alphaDecay(0.3)
+      .stop();
+
+    // Run simulation for a fixed number of iterations
+    for (let i = 0; i < 50; ++i) forceSimulation.tick();
+
+    // Update positions in the main nodes array
+    simulationNodes.forEach(simNode => {
+      const originalNode = nodes.find(n => n.Name === simNode.Name);
+      if (originalNode) {
+        originalNode.x = simNode.x;
+        originalNode.y = simNode.y;
+      }
+    });
+
+    return nodes;
+  };
+
+  const checkForOverlaps = (nodes, minDistance) => {
+    const overlaps = [];
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < minDistance) {
+          overlaps.push([i, j]);
+        }
+      }
+    }
+    return overlaps;
+  };
+
   const initializeUMAPPlot = () => {
     const svg = d3.select(mainSvg);
     const width = 500;
@@ -73,14 +177,37 @@
 
     svg.selectAll("*").remove();
 
-    // Create scales
+    // Calculate data bounds for proper zoom extents
+    const xExtent = d3.extent(data, d => d.x);
+    const yExtent = d3.extent(data, d => d.y);
+    
+    // Add padding to the data bounds (10% on each side)
+    const xPadding = (xExtent[1] - xExtent[0]) * 0.1;
+    const yPadding = (yExtent[1] - yExtent[0]) * 0.1;
+    
+    const xBounds = [xExtent[0] - xPadding, xExtent[1] + xPadding];
+    const yBounds = [yExtent[0] - yPadding, yExtent[1] + yPadding];
+
+    // Create scales based on actual data extent
     const xScale = d3.scaleLinear()
-      .domain(d3.extent(data, d => d.x))
+      .domain(xBounds)
       .range([margin.left, width - margin.right]);
 
     const yScale = d3.scaleLinear()
-      .domain(d3.extent(data, d => d.y))
+      .domain(yBounds)
       .range([height - margin.bottom, margin.top]);
+
+    // Calculate proper zoom extents based on data
+    const dataWidth = xExtent[1] - xExtent[0];
+    const dataHeight = yExtent[1] - yExtent[0];
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    
+    // Calculate translate extents to keep data visible
+    const translateExtentX0 = margin.left - (xScale(xExtent[1]) - margin.left);
+    const translateExtentY0 = margin.top - (yScale(yExtent[0]) - margin.top);
+    const translateExtentX1 = width - margin.right - (xScale(xExtent[0]) - (width - margin.right));
+    const translateExtentY1 = height - margin.bottom - (yScale(yExtent[1]) - (height - margin.bottom));
 
     // Color scale based on total births across all years (excluding -1.0 values)
     const totalBirths = data.map(d => {
@@ -95,11 +222,13 @@
       .domain(d3.extent(totalBirths));
 
     // Add axes
-    svg.append("g")
+    const xAxisGroup = svg.append("g")
+      .attr("class", "x-axis")
       .attr("transform", `translate(0,${height - margin.bottom})`)
       .call(d3.axisBottom(xScale));
 
-    svg.append("g")
+    const yAxisGroup = svg.append("g")
+      .attr("class", "y-axis")
       .attr("transform", `translate(${margin.left},0)`)
       .call(d3.axisLeft(yScale));
 
@@ -126,10 +255,28 @@
       .attr("text-anchor", "middle")
       .style("font-size", "16px")
       .style("font-weight", "bold")
-      .text("UMAP Embeddings - Draw Lasso to Select Names");
+      .text("UMAP Embeddings - Toggle Modes to Zoom or Select");
 
-    // Create points
-    const points = svg.selectAll(".point")
+    // Create a clipping path to constrain zoom area
+    svg.append("defs")
+      .append("clipPath")
+      .attr("id", "plot-area")
+      .append("rect")
+      .attr("x", margin.left)
+      .attr("y", margin.top)
+      .attr("width", width - margin.left - margin.right)
+      .attr("height", height - margin.top - margin.bottom);
+
+    // Create main group that will be transformed by zoom
+    const mainGroup = svg.append("g")
+      .attr("class", "main-group");
+
+    // Create points with clipping inside the main group
+    const pointsGroup = mainGroup.append("g")
+      .attr("class", "points-group")
+      .attr("clip-path", "url(#plot-area)");
+
+    const points = pointsGroup.selectAll(".point")
       .data(data)
       .enter()
       .append("circle")
@@ -140,108 +287,409 @@
       .attr("fill", (d, i) => colorScale(totalBirths[i]))
       .attr("stroke", "#333")
       .attr("stroke-width", 1)
-      .style("cursor", "pointer")
-      .append("title")
-      .text(d => d.Name);
+      .style("cursor", "pointer");
 
-    // Create lasso path element
-    const lassoPathElement = svg.append("path")
+    // Add hover effects and tooltips
+    points
+      .on("mouseenter", function(event, d) {
+        // Calculate current scaled radius based on zoom
+        const baseRadius = 4;
+        const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+        
+        // Set hover radius to 2x the current scaled size
+        d3.select(this).attr("r", scaledRadius * 2);
+        
+        // Create tooltip
+        const tooltip = svg.append("g")
+          .attr("class", "tooltip")
+          .style("pointer-events", "none");
+        
+        const [mouseX, mouseY] = d3.pointer(event, svg.node());
+        
+        // Create tooltip text with name and coordinates
+        const tooltipText = `${d.Name}\n(${d.x.toFixed(2)}, ${d.y.toFixed(2)})`;
+        const lines = tooltipText.split('\n');
+        
+        // Add background first
+        const textGroup = tooltip.append("g");
+        
+        // Add text lines
+        const textElements = lines.map((line, i) => {
+          return textGroup.append("text")
+            .attr("x", mouseX)
+            .attr("y", mouseY - 15 + (i * 16))
+            .attr("text-anchor", "middle")
+            .style("font-size", i === 0 ? "14px" : "12px")
+            .style("font-weight", i === 0 ? "bold" : "normal")
+            .style("fill", "#333")
+            .text(line);
+        });
+        
+        // Calculate combined bounding box
+        let combinedBBox = null;
+        textElements.forEach(textEl => {
+          const bbox = textEl.node().getBBox();
+          if (!combinedBBox) {
+            combinedBBox = bbox;
+          } else {
+            const minX = Math.min(combinedBBox.x, bbox.x);
+            const minY = Math.min(combinedBBox.y, bbox.y);
+            const maxX = Math.max(combinedBBox.x + combinedBBox.width, bbox.x + bbox.width);
+            const maxY = Math.max(combinedBBox.y + combinedBBox.height, bbox.y + bbox.height);
+            combinedBBox = {
+              x: minX,
+              y: minY,
+              width: maxX - minX,
+              height: maxY - minY
+            };
+          }
+        });
+        
+        // Insert background rectangle
+        tooltip.insert("rect", "g")
+          .attr("x", combinedBBox.x - 6)
+          .attr("y", combinedBBox.y - 3)
+          .attr("width", combinedBBox.width + 12)
+          .attr("height", combinedBBox.height + 6)
+          .attr("fill", "rgba(255, 255, 255, 0.95)")
+          .attr("stroke", "#ccc")
+          .attr("stroke-width", 1)
+          .attr("rx", 4);
+      })
+      .on("mouseleave", function(event, d) {
+        // Calculate current scaled radius based on zoom
+        const baseRadius = 4;
+        const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+        
+        // Reset radius based on selection state and current zoom
+        const isSelected = selectedPoints.includes(d);
+        const newRadius = isSelected ? scaledRadius * 1.5 : scaledRadius;
+        d3.select(this).attr("r", newRadius);
+        
+        // Remove tooltip
+        svg.select(".tooltip").remove();
+      });
+
+    // Create lasso path element with clipping inside main group
+    const lassoPathElement = mainGroup.append("path")
       .attr("class", "lasso-path")
       .attr("fill", "none")
       .attr("stroke", "#ff6b6b")
       .attr("stroke-width", 2)
       .attr("stroke-dasharray", "5,5")
+      .attr("clip-path", "url(#plot-area)")
       .style("opacity", 0);
 
-    // Lasso interaction
+    // Initialize adjusted data
+    adjustedData = data.map(d => ({
+      ...d,
+      x: xScale(d.x),
+      y: yScale(d.y),
+      originalX: d.x,
+      originalY: d.y
+    }));
+
+    // Zoom behavior with data-driven extents
+    zoomBehavior = d3.zoom()
+      .scaleExtent([0.5, 20]) // Allow more zoom range
+      .extent([[margin.left, margin.top], [width - margin.right, height - margin.bottom]])
+      .translateExtent([
+        [translateExtentX0, translateExtentY0],
+        [translateExtentX1, translateExtentY1]
+      ])
+      .on("zoom", (event) => {
+        currentTransform = event.transform;
+        
+        // Update axes with rescaled domains
+        const newXScale = currentTransform.rescaleX(xScale);
+        const newYScale = currentTransform.rescaleY(yScale);
+        
+        xAxisGroup.call(d3.axisBottom(newXScale));
+        yAxisGroup.call(d3.axisLeft(newYScale));
+        
+        // Calculate scaled point size (inverse relationship with zoom)
+        const baseRadius = 4;
+        const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+        
+        // Position points according to their rescaled coordinates (not transform the group)
+        pointsGroup.selectAll(".point")
+          .attr("cx", d => newXScale(d.x)) // Use rescaled position
+          .attr("cy", d => newYScale(d.y)) // Use rescaled position
+          .each(function(d) {
+            const isSelected = selectedPoints.includes(d);
+            const currentRadius = parseFloat(d3.select(this).attr("r"));
+            const isHovered = currentRadius > scaledRadius * 1.5; // Detect if currently hovered
+            
+            let newRadius;
+            if (isHovered) {
+              // Maintain hover effect (2x the current scaled size)
+              newRadius = scaledRadius * 2;
+            } else if (isSelected) {
+              // Selected points are 1.5x the scaled size
+              newRadius = scaledRadius * 1.5;
+            } else {
+              // Normal points use scaled size
+              newRadius = scaledRadius;
+            }
+            
+            d3.select(this).attr("r", newRadius);
+          });
+        
+        // Apply collision detection for overlapping points at high zoom
+        if (currentTransform.k > 3) {
+          // Get current rescaled positions for collision detection
+          const transformedData = data.map(d => ({
+            ...d,
+            x: newXScale(d.x),
+            y: newYScale(d.y),
+            originalX: d.x,
+            originalY: d.y
+          }));
+          
+          // Check for overlaps and adjust if needed (using scaled radius for collision detection)
+          const adjustedPositions = adjustPointPositionsSimple(transformedData, currentTransform.k, scaledRadius);
+          
+          // Apply adjusted positions
+          pointsGroup.selectAll(".point")
+            .attr("cx", (d, i) => adjustedPositions[i].x)
+            .attr("cy", (d, i) => adjustedPositions[i].y);
+        }
+      });
+
+    // Store reference to zoom handler for mode switching
+    const zoomHandler = zoomBehavior.on("zoom");
+
+    // Interaction variables
     let drawing = false;
     let currentPath = [];
+
+    const startInteraction = (event) => {
+      // Only allow interactions within the plot area
+      const [x, y] = d3.pointer(event, svg.node());
+      if (x < margin.left || x > width - margin.right || 
+          y < margin.top || y > height - margin.bottom) {
+        return; // Don't start interaction if outside plot area
+      }
+      
+      if (interactionMode === 'lasso') {
+        startLasso(event);
+      }
+    };
+
+    const continueInteraction = (event) => {
+      if (interactionMode === 'lasso' && drawing) {
+        continueLasso(event);
+      }
+    };
+
+    const endInteraction = (event) => {
+      if (interactionMode === 'lasso' && drawing) {
+        endLasso(event);
+      }
+    };
 
     const startLasso = (event) => {
       drawing = true;
       isLassoing = true;
       currentPath = [];
+      
+      // Get coordinates relative to the SVG (since we're not transforming the main group anymore)
       const [x, y] = d3.pointer(event, svg.node());
       currentPath.push([x, y]);
       lassoPathElement.style("opacity", 1);
+      
+      event.stopPropagation();
+      event.preventDefault();
     };
 
     const continueLasso = (event) => {
       if (!drawing) return;
+      
+      // Get coordinates relative to the SVG
       const [x, y] = d3.pointer(event, svg.node());
       currentPath.push([x, y]);
       
       const pathString = d3.line()(currentPath);
       lassoPathElement.attr("d", pathString);
+      
+      event.stopPropagation();
+      event.preventDefault();
     };
 
-    const endLasso = () => {
+    const endLasso = (event) => {
       if (!drawing) return;
       drawing = false;
       isLassoing = false;
       
-      // Close the path
       if (currentPath.length > 2) {
         currentPath.push(currentPath[0]);
       }
 
-      // Find selected points
+      // Find selected points using current rescaled positions
+      const newXScale = currentTransform.rescaleX(xScale);
+      const newYScale = currentTransform.rescaleY(yScale);
+      
       const selected = data.filter(d => {
-        const point = [xScale(d.x), yScale(d.y)];
+        // Use the current rescaled coordinates for selection
+        const point = [newXScale(d.x), newYScale(d.y)];
         return pointInPolygon(point, currentPath);
       });
 
       selectedPoints = selected;
       
-      // Update point styles
-      svg.selectAll(".point")
+      // Calculate current scaled radius for selection styling
+      const baseRadius = 4;
+      const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+      
+      pointsGroup.selectAll(".point")
         .attr("stroke", d => selected.includes(d) ? "#ff6b6b" : "#333")
         .attr("stroke-width", d => selected.includes(d) ? 3 : 1)
-        .attr("r", d => selected.includes(d) ? 6 : 4);
+        .each(function(d) {
+          // Update radius based on selection state and current zoom
+          const currentRadius = parseFloat(d3.select(this).attr("r"));
+          const isSelected = selected.includes(d);
+          const isHovered = currentRadius > scaledRadius * 1.5;
+          
+          if (!isHovered) {
+            const newRadius = isSelected ? scaledRadius * 1.5 : scaledRadius;
+            d3.select(this).attr("r", newRadius);
+          }
+        });
 
-      // Update trend plot
       updateTrendPlot();
 
-      // Hide lasso path
       lassoPathElement.style("opacity", 0);
       currentPath = [];
+      
+      event.stopPropagation();
+      event.preventDefault();
+    };
+
+    // Set interaction mode function (clear selection when switching from lasso to zoom)
+    const setInteractionMode = (mode) => {
+      const previousMode = interactionMode;
+      interactionMode = mode;
+      
+      if (mode === 'zoom') {
+        // Clear selection when switching from lasso to zoom
+        if (previousMode === 'lasso') {
+          selectedPoints = [];
+          
+          // Calculate current scaled radius based on zoom
+          const baseRadius = 4;
+          const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+          
+          pointsGroup.selectAll(".point")
+            .attr("stroke", "#333")
+            .attr("stroke-width", 1)
+            .each(function(d) {
+              // Preserve hover state
+              const currentRadius = parseFloat(d3.select(this).attr("r"));
+              const isHovered = currentRadius > scaledRadius * 1.5;
+              if (!isHovered) {
+                d3.select(this).attr("r", scaledRadius);
+              }
+            });
+          updateTrendPlot();
+        }
+        
+        // Re-enable zoom behavior
+        svg.call(zoomBehavior);
+        svg.style("cursor", "grab");
+        
+        // Immediately refresh the zoom state to ensure points are positioned correctly
+        if (currentTransform && (currentTransform.k !== 1 || currentTransform.x !== 0 || currentTransform.y !== 0)) {
+          // Update axes and point positions with current transform
+          const newXScale = currentTransform.rescaleX(xScale);
+          const newYScale = currentTransform.rescaleY(yScale);
+          
+          xAxisGroup.call(d3.axisBottom(newXScale));
+          yAxisGroup.call(d3.axisLeft(newYScale));
+          
+          // Position points according to rescaled coordinates
+          pointsGroup.selectAll(".point")
+            .attr("cx", d => newXScale(d.x))
+            .attr("cy", d => newYScale(d.y));
+        }
+      } else if (mode === 'lasso') {
+        // Disable zoom behavior
+        svg.on(".zoom", null);
+        svg.style("cursor", "crosshair");
+      }
+      
+      updateModeButtons();
+    };
+
+    const updateModeButtons = () => {
+      // Update HTML button styles instead of SVG elements
+      const zoomBtn = document.querySelector('.zoom-mode-btn');
+      const lassoBtn = document.querySelector('.lasso-mode-btn');
+      
+      if (zoomBtn && lassoBtn) {
+        if (interactionMode === 'zoom') {
+          zoomBtn.classList.add('active');
+          lassoBtn.classList.remove('active');
+        } else {
+          zoomBtn.classList.remove('active');
+          lassoBtn.classList.add('active');
+        }
+      }
     };
 
     // Add event listeners
-    svg.on("mousedown", startLasso)
-       .on("mousemove", continueLasso)
-       .on("mouseup", endLasso);
+    svg.on("mousedown", startInteraction)
+       .on("mousemove", continueInteraction)
+       .on("mouseup", endInteraction);
 
-    // Clear selection button
-    svg.append("rect")
-      .attr("x", width - 100)
-      .attr("y", 50)
-      .attr("width", 80)
-      .attr("height", 25)
-      .attr("fill", "#007bff")
-      .attr("stroke", "#0056b3")
-      .attr("rx", 3)
-      .style("cursor", "pointer")
-      .on("click", clearSelection);
-
-    svg.append("text")
-      .attr("x", width - 60)
-      .attr("y", 67)
-      .attr("text-anchor", "middle")
-      .style("fill", "white")
-      .style("font-size", "12px")
-      .style("cursor", "pointer")
-      .text("Clear")
-      .on("click", clearSelection);
+    // Functions for external button controls
+    window.setInteractionMode = setInteractionMode;
+    window.clearSelection = clearSelection;
+    window.resetZoom = resetZoom;
 
     function clearSelection() {
       selectedPoints = [];
-      svg.selectAll(".point")
+      
+      // Calculate current scaled radius based on zoom
+      const baseRadius = 4;
+      const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+      
+      pointsGroup.selectAll(".point")
         .attr("stroke", "#333")
         .attr("stroke-width", 1)
-        .attr("r", 4);
+        .each(function(d) {
+          // Preserve hover state
+          const currentRadius = parseFloat(d3.select(this).attr("r"));
+          const isHovered = currentRadius > scaledRadius * 1.5;
+          if (!isHovered) {
+            d3.select(this).attr("r", scaledRadius);
+          }
+        });
       updateTrendPlot();
     }
+
+    function resetZoom() {
+      svg.transition()
+         .duration(500)
+         .call(zoomBehavior.transform, d3.zoomIdentity)
+         .on("end", () => {
+           // Reset point positions to original scale positions
+           pointsGroup.selectAll(".point")
+             .attr("cx", d => xScale(d.x))
+             .attr("cy", d => yScale(d.y))
+             .each(function(d) {
+               // Reset to base radius and preserve selection state
+               const isSelected = selectedPoints.includes(d);
+               const isHovered = parseFloat(d3.select(this).attr("r")) > 6;
+               
+               if (!isHovered) {
+                 d3.select(this).attr("r", isSelected ? 6 : 4);
+               }
+             });
+         });
+    }
+
+    // Initialize in zoom mode
+    setInteractionMode('zoom');
   };
 
   const updateTrendPlot = () => {
@@ -263,28 +711,24 @@
       return;
     }
 
-    // Get all year columns
     const years = getYearColumns(selectedPoints[0]);
     
-    // Filter out years with -1.0 values and prepare data for line chart
     const trendData = years.map(year => {
       const yearData = {
         year: +year,
         values: selectedPoints.map(d => ({
           name: d.Name,
           births: d[year] || 0
-        })).filter(d => d.births !== -1.0) // Filter out -1.0 values
+        })).filter(d => d.births !== -1.0)
       };
       return yearData;
-    }).filter(yearData => yearData.values.length > 0); // Only keep years that have at least some valid data
+    }).filter(yearData => yearData.values.length > 0);
 
-    // Create scales
     const validYears = trendData.map(d => d.year);
     const xScale = d3.scaleLinear()
       .domain(d3.extent(validYears))
       .range([margin.left, width - margin.right]);
 
-    // Get all valid birth values (excluding -1.0)
     const allValidBirths = selectedPoints.flatMap(d => 
       years.map(year => d[year]).filter(births => births !== -1.0 && births > 0)
     );
@@ -330,21 +774,18 @@
       .style("font-weight", "bold")
       .text(`Birth Trends (${selectedPoints.length} names selected)`);
 
-    // Line generator
     const line = d3.line()
       .x(d => xScale(d.year))
       .y(d => yScale(d.births))
       .curve(d3.curveMonotoneX);
 
-    // Draw lines for each selected name
     selectedPoints.forEach((person, i) => {
-      // Filter out years with -1.0 values for this person
       const personData = years.map(year => ({
         year: +year,
         births: person[year]
-      })).filter(d => d.births !== -1.0 && d.births > 0); // Only include valid data points
+      })).filter(d => d.births !== -1.0 && d.births > 0);
 
-      if (personData.length > 0) { // Only draw if there's valid data
+      if (personData.length > 0) {
         svg.append("path")
           .datum(personData)
           .attr("fill", "none")
@@ -353,7 +794,6 @@
           .attr("d", line)
           .style("opacity", 0.7);
 
-        // Add dots for valid data points only
         svg.selectAll(`.dot-${i}`)
           .data(personData)
           .enter()
@@ -368,7 +808,6 @@
       }
     });
 
-    // Add legend if there are multiple names
     if (selectedPoints.length > 1 && selectedPoints.length <= 10) {
       const legend = svg.append("g")
         .attr("class", "legend")
@@ -397,7 +836,6 @@
   // Function to load data from your JSON files
   const loadData = async (filename = selectedFile) => {
     try {
-      // FIXED: Use base path for GitHub Pages deployment
       const url = `${base}/data/${filename}`;
       console.log('Attempting to fetch from:', url);
       
@@ -409,42 +847,46 @@
       
       const jsonData = await response.json();
       
-      // Validate that the data has the expected structure
       if (Array.isArray(jsonData) && jsonData.length > 0) {
         const firstItem = jsonData[0];
         if (firstItem.hasOwnProperty('x') && firstItem.hasOwnProperty('y') && firstItem.hasOwnProperty('Name')) {
           data = jsonData;
           console.log(`Loaded ${data.length} data points from ${filename}`);
           
-          // Reinitialize plots with new data
+          currentTransform = d3.zoomIdentity;
+          
           initializeUMAPPlot();
           updateTrendPlot();
         } else {
-          console.error('Data does not have expected structure (missing x, y, or Name fields)');
-          data = sampleData; // Fallback to sample data
+          console.error('Data does not have expected structure');
+          data = sampleData;
+          initializeUMAPPlot();
+          updateTrendPlot();
         }
       } else {
         console.error('Data is not a valid array');
-        data = sampleData; // Fallback to sample data
+        data = sampleData;
+        initializeUMAPPlot();
+        updateTrendPlot();
       }
     } catch (error) {
       console.error('Error loading data:', error);
       console.log('Falling back to sample data');
-      data = sampleData; // Fallback to sample data
+      data = sampleData;
+      initializeUMAPPlot();
+      updateTrendPlot();
     }
   };
 
   // Handle file selection change
   const handleFileChange = async (event) => {
     selectedFile = event.target.value;
-    selectedPoints = []; // Clear selection when changing files
+    selectedPoints = [];
     await loadData(selectedFile);
   };
 
   onMount(async () => {
     await loadData();
-    initializeUMAPPlot();
-    updateTrendPlot();
   });
 </script>
 
@@ -452,6 +894,30 @@
   <div class="plots-container">
     <div class="plot-container">
       <svg bind:this={mainSvg} width="500" height="400"></svg>
+      
+      <!-- Control buttons below the visualization -->
+      <div class="controls-panel">
+        <button 
+          class="control-btn zoom-mode-btn active" 
+          on:click={() => window.setInteractionMode && window.setInteractionMode('zoom')}>
+          🔍 Zoom/Pan
+        </button>
+        <button 
+          class="control-btn lasso-mode-btn" 
+          on:click={() => window.setInteractionMode && window.setInteractionMode('lasso')}>
+          🎯 Lasso Select
+        </button>
+        <button 
+          class="control-btn clear-btn" 
+          on:click={() => window.clearSelection && window.clearSelection()}>
+          Clear Selection
+        </button>
+        <button 
+          class="control-btn reset-btn" 
+          on:click={() => window.resetZoom && window.resetZoom()}>
+          Reset Zoom
+        </button>
+      </div>
     </div>
     
     <div class="plot-container">
@@ -474,10 +940,11 @@
       <h3>Instructions:</h3>
       <ul>
         <li>Select a data file from the dropdown above</li>
-        <li>Click and drag on the UMAP plot to draw a lasso around name clusters</li>
-        <li>Release the mouse to complete the selection</li>
+        <li><strong>Mode Toggle:</strong> Click "🔍 Zoom/Pan" to zoom and pan, or "🎯 Lasso Select" to draw selections</li>
+        <li><strong>Zoom Mode:</strong> Mouse wheel to zoom, click and drag to pan (points separate when zoomed in)</li>
+        <li><strong>Lasso Mode:</strong> Click and drag to draw a lasso around points you want to select</li>
         <li>Selected names will show their birth trends in the right plot</li>
-        <li>Click "Clear" to reset the selection</li>
+        <li>Click "Clear" to reset selection or "Reset Zoom" to return to original view</li>
       </ul>
     </div>
     
@@ -630,6 +1097,71 @@
   :global(.legend text) {
     font-size: 12px;
   }
-</style>
-<!-- <h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p> -->
+
+  .controls-panel {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-top: 1px solid #ddd;
+  }
+
+  .control-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+
+  .zoom-mode-btn {
+    background: #6c757d;
+    color: white;
+  }
+
+  .zoom-mode-btn.active {
+    background: #007bff;
+    color: white;
+  }
+
+  .lasso-mode-btn {
+    background: #6c757d;
+    color: white;
+  }
+
+  .lasso-mode-btn.active {
+    background: #dc3545;
+    color: white;
+  }
+
+  .clear-btn {
+    background: #17a2b8;
+    color: white;
+  }
+
+  .clear-btn:hover {
+    background: #138496;
+  }
+
+  .reset-btn {
+    background: #28a745;
+    color: white;
+  }
+
+  .reset-btn:hover {
+    background: #1e7e34;
+  }
+
+  .control-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .control-btn:active {
+    transform: translateY(0);
+  }
+  </style>
