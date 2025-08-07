@@ -9,6 +9,7 @@
   let isLassoing = false;
   let data = [];
   let selectedFile = 'umap-name-etymology.json';
+  let selectedAttribute = 'total_births'; // Default attribute for coloring
   
   // Zoom and interaction variables
   let zoomBehavior;
@@ -34,14 +35,72 @@
     'umap-origin.json'
   ];
 
+  // Available attributes for coloring
+  const availableAttributes = [
+    { value: 'total_births', label: 'Total Births', type: 'numeric' },
+    { value: 'avg_births_per_year', label: 'Avg Births per Year', type: 'numeric' },
+    { value: 'births_std', label: 'Birth Standard Deviation', type: 'numeric' },
+    { value: 'peak_births', label: 'Peak Births', type: 'numeric' },
+    { value: 'first_year', label: 'First Year', type: 'numeric' },
+    { value: 'last_year', label: 'Last Year', type: 'numeric' },
+    { value: 'total_active_years', label: 'Total Active Years', type: 'numeric' },
+    { value: 'year_span', label: 'Year Span', type: 'numeric' },
+    { value: 'avg_popularity_pct', label: 'Avg Popularity %', type: 'numeric' },
+    { value: 'peak_popularity_pct', label: 'Peak Popularity %', type: 'numeric' },
+    { value: 'peak_decade', label: 'Peak Decade', type: 'numeric' },
+    { value: 'name_length', label: 'Name Length', type: 'numeric' },
+    { value: 'vowel_count', label: 'Vowel Count', type: 'numeric' },
+    { value: 'etymology', label: 'Etymology', type: 'categorical' },
+    { value: 'origin', label: 'Origin', type: 'categorical' },
+    { value: 'gender', label: 'Gender', type: 'categorical' }
+  ];
+
   // Sample data - replace with your actual JSON data
   const sampleData = [
-    { "Name":"Abby", "1976":256.0, "1977":142.0, "1978":312.0, "1979":791.0, "1980":467.5, "1981":608.5, "1982":653.0, "1983":657.5, "1984":1263.0, "1985":607.5, "x":8.6866903305, "y":3.9082963467 },
-    { "Name":"Abel", "1976":395.0, "1977":347.0, "1978":371.0, "1979":217.0, "1980":240.0, "1981":242.0, "1982":467.0, "1983":217.5, "1984":427.0, "1985":461.0, "x":6.3117189407, "y":2.1993675232 },
-    { "Name":"Abigail", "1976":417.5, "1977":795.0, "1978":1010.0, "1979":1225.0, "1980":793.0, "1981":911.0, "1982":946.5, "1983":961.0, "1984":924.5, "1985":930.5, "x":8.9767932892, "y":3.9221160412 },
-    { "Name":"Aaron", "1976":1205.0, "1977":1089.0, "1978":1052.0, "1979":1031.0, "1980":1012.0, "1981":995.0, "1982":982.0, "1983":975.0, "1984":968.0, "1985":962.0, "x":5.2345678901, "y":1.8765432109 },
-    { "Name":"Ada", "1976":45.0, "1977":52.0, "1978":48.0, "1979":51.0, "1980":49.0, "1981":53.0, "1982":56.0, "1983":58.0, "1984":62.0, "1985":65.0, "x":9.1234567890, "y":4.5678901234 }
+    { "Name":"Abby", "1976":256.0, "1977":142.0, "1978":312.0, "1979":791.0, "1980":467.5, "1981":608.5, "1982":653.0, "1983":657.5, "1984":1263.0, "1985":607.5, "x":8.6866903305, "y":3.9082963467, "total_births":5000, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Hebrew", "etymology":"father's joy" },
+    { "Name":"Abel", "1976":395.0, "1977":347.0, "1978":371.0, "1979":217.0, "1980":240.0, "1981":242.0, "1982":467.0, "1983":217.5, "1984":427.0, "1985":461.0, "x":6.3117189407, "y":2.1993675232, "total_births":3200, "is_male":true, "is_female":false, "is_unisex":false, "origin":"Hebrew", "etymology":"breath" },
+    { "Name":"Abigail", "1976":417.5, "1977":795.0, "1978":1010.0, "1979":1225.0, "1980":793.0, "1981":911.0, "1982":946.5, "1983":961.0, "1984":924.5, "1985":930.5, "x":8.9767932892, "y":3.9221160412, "total_births":8500, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Hebrew", "etymology":"father's joy" },
+    { "Name":"Aaron", "1976":1205.0, "1977":1089.0, "1978":1052.0, "1979":1031.0, "1980":1012.0, "1981":995.0, "1982":982.0, "1983":975.0, "1984":968.0, "1985":962.0, "x":5.2345678901, "y":1.8765432109, "total_births":12000, "is_male":true, "is_female":false, "is_unisex":false, "origin":"Hebrew", "etymology":"high mountain" },
+    { "Name":"Ada", "1976":45.0, "1977":52.0, "1978":48.0, "1979":51.0, "1980":49.0, "1981":53.0, "1982":56.0, "1983":58.0, "1984":62.0, "1985":65.0, "x":9.1234567890, "y":4.5678901234, "total_births":500, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Germanic", "etymology":"noble" }
   ];
+
+  // Helper function to determine gender display
+  const getGenderDisplay = (d) => {
+    if (d.is_unisex) return 'Unisex';
+    if (d.is_male && d.is_female) return 'Unisex';
+    if (d.is_male) return 'Male';
+    if (d.is_female) return 'Female';
+    return 'Unknown';
+  };
+
+  // Helper function to get attribute value for coloring
+  const getAttributeValue = (d, attribute) => {
+    if (attribute === 'gender') {
+      return getGenderDisplay(d);
+    }
+    return d[attribute];
+  };
+
+  // Create color scale based on selected attribute
+  const createColorScale = (data, attribute) => {
+    const attributeInfo = availableAttributes.find(attr => attr.value === attribute);
+    
+    if (!attributeInfo || data.length === 0) {
+      return d3.scaleOrdinal(d3.schemeCategory10);
+    }
+
+    if (attributeInfo.type === 'categorical') {
+      const values = [...new Set(data.map(d => getAttributeValue(d, attribute)).filter(v => v != null))];
+      return d3.scaleOrdinal(d3.schemeCategory10).domain(values);
+    } else {
+      // Numeric
+      const values = data.map(d => getAttributeValue(d, attribute)).filter(v => v != null && !isNaN(v));
+      if (values.length === 0) {
+        return d3.scaleOrdinal(d3.schemeCategory10);
+      }
+      return d3.scaleSequential(d3.interpolateViridis).domain(d3.extent(values));
+    }
+  };
 
   // Extract year columns from data
   const getYearColumns = (dataPoint) => {
@@ -99,6 +158,7 @@
     
     return nodes;
   };
+
   const adjustPointPositions = (data, transform, xScale, yScale) => {
     const nodes = data.map(d => ({
       ...d,
@@ -209,17 +269,8 @@
     const translateExtentX1 = width - margin.right - (xScale(xExtent[0]) - (width - margin.right));
     const translateExtentY1 = height - margin.bottom - (yScale(yExtent[1]) - (height - margin.bottom));
 
-    // Color scale based on total births across all years (excluding -1.0 values)
-    const totalBirths = data.map(d => {
-      const years = getYearColumns(d);
-      return years.reduce((sum, year) => {
-        const births = d[year];
-        return births !== -1.0 && births > 0 ? sum + births : sum;
-      }, 0);
-    });
-
-    const colorScale = d3.scaleSequential(d3.interpolateViridis)
-      .domain(d3.extent(totalBirths));
+    // Color scale based on selected attribute
+    const colorScale = createColorScale(data, selectedAttribute);
 
     // Add axes
     const xAxisGroup = svg.append("g")
@@ -249,13 +300,14 @@
       .text("UMAP Y");
 
     // Add title
+    const selectedAttrLabel = availableAttributes.find(attr => attr.value === selectedAttribute)?.label || selectedAttribute;
     svg.append("text")
       .attr("x", width / 2)
       .attr("y", 20)
       .attr("text-anchor", "middle")
       .style("font-size", "16px")
       .style("font-weight", "bold")
-      .text("UMAP Embeddings - Toggle Modes to Zoom or Select");
+      .text(`UMAP Embeddings - Colored by ${selectedAttrLabel}`);
 
     // Create a clipping path to constrain zoom area
     svg.append("defs")
@@ -284,7 +336,7 @@
       .attr("cx", d => xScale(d.x))
       .attr("cy", d => yScale(d.y))
       .attr("r", 4)
-      .attr("fill", (d, i) => colorScale(totalBirths[i]))
+      .attr("fill", d => colorScale(getAttributeValue(d, selectedAttribute)))
       .attr("stroke", "#333")
       .attr("stroke-width", 1)
       .style("cursor", "pointer");
@@ -306,15 +358,30 @@
         
         const [mouseX, mouseY] = d3.pointer(event, svg.node());
         
-        // Create tooltip text with name and coordinates
-        const tooltipText = `${d.Name}\n(${d.x.toFixed(2)}, ${d.y.toFixed(2)})`;
-        const lines = tooltipText.split('\n');
+        // Create enhanced tooltip text with name, coordinates, gender, and selected attribute
+        const gender = getGenderDisplay(d);
+        const attrValue = getAttributeValue(d, selectedAttribute);
+        const attrLabel = availableAttributes.find(attr => attr.value === selectedAttribute)?.label || selectedAttribute;
+        
+        let formattedAttrValue = attrValue;
+        if (typeof attrValue === 'number') {
+          formattedAttrValue = attrValue.toLocaleString();
+        }
+        
+        const tooltipLines = [
+          d.Name,
+          `Gender: ${gender}`,
+          `${attrLabel}: ${formattedAttrValue}`,
+          `Origin: ${d.origin || 'Unknown'}`,
+          `Etymology: ${d.etymology || 'Unknown'}`,
+          `(${d.x.toFixed(2)}, ${d.y.toFixed(2)})`
+        ];
         
         // Add background first
         const textGroup = tooltip.append("g");
         
         // Add text lines
-        const textElements = lines.map((line, i) => {
+        const textElements = tooltipLines.map((line, i) => {
           return textGroup.append("text")
             .attr("x", mouseX)
             .attr("y", mouseY - 15 + (i * 16))
@@ -740,12 +807,24 @@
 
     const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
-    // Add axes
-    svg.append("g")
+    // Create clipping path for the plot area
+    svg.append("defs")
+      .append("clipPath")
+      .attr("id", "trend-plot-area")
+      .append("rect")
+      .attr("x", margin.left)
+      .attr("y", margin.top)
+      .attr("width", width - margin.left - margin.right)
+      .attr("height", height - margin.top - margin.bottom);
+
+    // Add axes groups
+    const xAxisGroup = svg.append("g")
+      .attr("class", "x-axis")
       .attr("transform", `translate(0,${height - margin.bottom})`)
       .call(d3.axisBottom(xScale).tickFormat(d3.format("d")));
 
-    svg.append("g")
+    const yAxisGroup = svg.append("g")
+      .attr("class", "y-axis")
       .attr("transform", `translate(${margin.left},0)`)
       .call(d3.axisLeft(yScale));
 
@@ -772,12 +851,55 @@
       .attr("text-anchor", "middle")
       .style("font-size", "16px")
       .style("font-weight", "bold")
-      .text(`Birth Trends (${selectedPoints.length} names selected)`);
+      .text(`Birth Trends (${selectedPoints.length} names selected) - Scroll to zoom`);
+
+    // Create main group for lines and dots that will be clipped
+    const plotGroup = svg.append("g")
+      .attr("class", "trend-plot-group")
+      .attr("clip-path", "url(#trend-plot-area)");
 
     const line = d3.line()
       .x(d => xScale(d.year))
       .y(d => yScale(d.births))
       .curve(d3.curveMonotoneX);
+
+    // Set up zoom behavior for the trend plot
+    const trendZoom = d3.zoom()
+      .scaleExtent([1, 10])
+      .extent([[margin.left, margin.top], [width - margin.right, height - margin.bottom]])
+      .on("zoom", (event) => {
+        const { transform } = event;
+        
+        // Create new rescaled scales
+        const newXScale = transform.rescaleX(xScale);
+        const newYScale = transform.rescaleY(yScale);
+        
+        // Update axes
+        xAxisGroup.call(d3.axisBottom(newXScale).tickFormat(d3.format("d")));
+        yAxisGroup.call(d3.axisLeft(newYScale));
+        
+        // Create new line generator with rescaled scales
+        const newLine = d3.line()
+          .x(d => newXScale(d.year))
+          .y(d => newYScale(d.births))
+          .curve(d3.curveMonotoneX);
+        
+        // Update all lines
+        plotGroup.selectAll(".trend-line")
+          .attr("d", d => newLine(d));
+        
+        // Update all visible lines for hover detection
+        plotGroup.selectAll(".trend-line-hover")
+          .attr("d", d => newLine(d));
+        
+        // Update all dots
+        plotGroup.selectAll(".trend-dot")
+          .attr("cx", d => newXScale(d.year))
+          .attr("cy", d => newYScale(d.births));
+      });
+
+    // Apply zoom to the main SVG with constraint to plot area
+    svg.call(trendZoom);
 
     selectedPoints.forEach((person, i) => {
       const personData = years.map(year => ({
@@ -786,25 +908,166 @@
       })).filter(d => d.births !== -1.0 && d.births > 0);
 
       if (personData.length > 0) {
-        svg.append("path")
+        // Create the main line path
+        const linePath = plotGroup.append("path")
           .datum(personData)
+          .attr("class", "trend-line")
           .attr("fill", "none")
           .attr("stroke", colorScale(i))
           .attr("stroke-width", 2)
           .attr("d", line)
-          .style("opacity", 0.7);
+          .style("opacity", 0.7)
+          .style("cursor", "pointer")
+          .on("mouseenter", function(event) {
+            // Highlight the hovered line
+            d3.select(this)
+              .attr("stroke-width", 4)
+              .style("opacity", 1);
+            
+            // Create tooltip for the line
+            const tooltip = svg.append("g")
+              .attr("class", "line-tooltip")
+              .style("pointer-events", "none");
+            
+            const [mouseX, mouseY] = d3.pointer(event, svg.node());
+            
+            // Add tooltip background and text
+            const tooltipText = tooltip.append("text")
+              .attr("x", mouseX)
+              .attr("y", mouseY - 10)
+              .attr("text-anchor", "middle")
+              .style("font-size", "14px")
+              .style("font-weight", "bold")
+              .style("fill", "#333")
+              .text(person.Name);
+            
+            // Get text bounding box for background
+            const bbox = tooltipText.node().getBBox();
+            
+            // Insert background rectangle
+            tooltip.insert("rect", "text")
+              .attr("x", bbox.x - 6)
+              .attr("y", bbox.y - 3)
+              .attr("width", bbox.width + 12)
+              .attr("height", bbox.height + 6)
+              .attr("fill", "rgba(255, 255, 255, 0.95)")
+              .attr("stroke", colorScale(i))
+              .attr("stroke-width", 2)
+              .attr("rx", 4);
+          })
+          .on("mouseleave", function(event) {
+            // Reset line appearance
+            d3.select(this)
+              .attr("stroke-width", 2)
+              .style("opacity", 0.7);
+            
+            // Remove tooltip
+            svg.select(".line-tooltip").remove();
+          });
 
-        svg.selectAll(`.dot-${i}`)
+        // Create invisible wider path for easier hover targeting
+        plotGroup.append("path")
+          .datum(personData)
+          .attr("class", "trend-line-hover")
+          .attr("fill", "none")
+          .attr("stroke", "transparent")
+          .attr("stroke-width", 10)
+          .attr("d", line)
+          .style("cursor", "pointer")
+          .on("mouseenter", function(event) {
+            // Trigger the same hover effect on the visible line
+            linePath.dispatch("mouseenter", { detail: event });
+          })
+          .on("mouseleave", function(event) {
+            // Trigger the same leave effect on the visible line
+            linePath.dispatch("mouseleave", { detail: event });
+          });
+
+        // Add data points (dots) with enhanced tooltips
+        plotGroup.selectAll(`.dot-${i}`)
           .data(personData)
           .enter()
           .append("circle")
-          .attr("class", `dot-${i}`)
+          .attr("class", `trend-dot dot-${i}`)
           .attr("cx", d => xScale(d.year))
           .attr("cy", d => yScale(d.births))
           .attr("r", 3)
           .attr("fill", colorScale(i))
-          .append("title")
-          .text(d => `${person.Name}: ${d.births} births in ${d.year}`);
+          .attr("stroke", "white")
+          .attr("stroke-width", 1)
+          .style("cursor", "pointer")
+          .on("mouseenter", function(event, d) {
+            // Highlight the dot
+            d3.select(this)
+              .attr("r", 5)
+              .attr("stroke-width", 2);
+            
+            // Create detailed tooltip for the dot
+            const tooltip = svg.append("g")
+              .attr("class", "dot-tooltip")
+              .style("pointer-events", "none");
+            
+            const [mouseX, mouseY] = d3.pointer(event, svg.node());
+            
+            const tooltipLines = [
+              person.Name,
+              `${d.births.toLocaleString()} births`,
+              `Year: ${d.year}`
+            ];
+            
+            const textGroup = tooltip.append("g");
+            
+            const textElements = tooltipLines.map((line, idx) => {
+              return textGroup.append("text")
+                .attr("x", mouseX)
+                .attr("y", mouseY - 15 + (idx * 16))
+                .attr("text-anchor", "middle")
+                .style("font-size", idx === 0 ? "14px" : "12px")
+                .style("font-weight", idx === 0 ? "bold" : "normal")
+                .style("fill", "#333")
+                .text(line);
+            });
+            
+            // Calculate combined bounding box
+            let combinedBBox = null;
+            textElements.forEach(textEl => {
+              const bbox = textEl.node().getBBox();
+              if (!combinedBBox) {
+                combinedBBox = bbox;
+              } else {
+                const minX = Math.min(combinedBBox.x, bbox.x);
+                const minY = Math.min(combinedBBox.y, bbox.y);
+                const maxX = Math.max(combinedBBox.x + combinedBBox.width, bbox.x + bbox.width);
+                const maxY = Math.max(combinedBBox.y + combinedBBox.height, bbox.y + bbox.height);
+                combinedBBox = {
+                  x: minX,
+                  y: minY,
+                  width: maxX - minX,
+                  height: maxY - minY
+                };
+              }
+            });
+            
+            // Insert background rectangle
+            tooltip.insert("rect", "g")
+              .attr("x", combinedBBox.x - 6)
+              .attr("y", combinedBBox.y - 3)
+              .attr("width", combinedBBox.width + 12)
+              .attr("height", combinedBBox.height + 6)
+              .attr("fill", "rgba(255, 255, 255, 0.95)")
+              .attr("stroke", colorScale(i))
+              .attr("stroke-width", 1)
+              .attr("rx", 4);
+          })
+          .on("mouseleave", function(event, d) {
+            // Reset dot appearance
+            d3.select(this)
+              .attr("r", 3)
+              .attr("stroke-width", 1);
+            
+            // Remove tooltip
+            svg.select(".dot-tooltip").remove();
+          });
       }
     });
 
@@ -831,6 +1094,44 @@
           .text(person.Name);
       });
     }
+
+    // Add reset zoom button for trend chart
+    const resetButton = svg.append("g")
+      .attr("class", "trend-reset-button")
+      .attr("transform", `translate(${width - 80}, ${height - 30})`)
+      .style("cursor", "pointer")
+      .on("click", function() {
+        svg.transition()
+           .duration(500)
+           .call(trendZoom.transform, d3.zoomIdentity);
+      });
+
+    resetButton.append("rect")
+      .attr("x", -5)
+      .attr("y", -12)
+      .attr("width", 70)
+      .attr("height", 18)
+      .attr("fill", "#28a745")
+      .attr("stroke", "#1e7e34")
+      .attr("stroke-width", 1)
+      .attr("rx", 3)
+      .style("opacity", 0.8);
+
+    resetButton.append("text")
+      .attr("x", 30)
+      .attr("y", 0)
+      .attr("text-anchor", "middle")
+      .attr("dy", "0.35em")
+      .style("font-size", "11px")
+      .style("font-weight", "bold")
+      .style("fill", "white")
+      .text("Reset Zoom");
+
+    resetButton.on("mouseenter", function() {
+      d3.select(this).select("rect").style("opacity", 1);
+    }).on("mouseleave", function() {
+      d3.select(this).select("rect").style("opacity", 0.8);
+    });
   };
 
   // Function to load data from your JSON files
@@ -885,6 +1186,14 @@
     await loadData(selectedFile);
   };
 
+  // Handle attribute selection change
+  const handleAttributeChange = async (event) => {
+    selectedAttribute = event.target.value;
+    selectedPoints = [];
+    initializeUMAPPlot();
+    updateTrendPlot();
+  };
+
   onMount(async () => {
     await loadData();
   });
@@ -935,14 +1244,26 @@
       </select>
       <p class="file-info">Currently loaded: {data.length} data points</p>
     </div>
+
+    <div class="attribute-selector">
+      <label for="attribute-select"><strong>Color Points By:</strong></label>
+      <select id="attribute-select" bind:value={selectedAttribute} on:change={handleAttributeChange}>
+        {#each availableAttributes as attr}
+          <option value={attr.value}>{attr.label}</option>
+        {/each}
+      </select>
+      <p class="attribute-info">Points colored by: {availableAttributes.find(attr => attr.value === selectedAttribute)?.label || selectedAttribute}</p>
+    </div>
     
     <div class="instructions">
       <h3>Instructions:</h3>
       <ul>
-        <li>Select a data file from the dropdown above</li>
+        <li>Select a data file from the first dropdown above</li>
+        <li>Choose an attribute to color the points by from the second dropdown</li>
         <li><strong>Mode Toggle:</strong> Click "🔍 Zoom/Pan" to zoom and pan, or "🎯 Lasso Select" to draw selections</li>
         <li><strong>Zoom Mode:</strong> Mouse wheel to zoom, click and drag to pan (points separate when zoomed in)</li>
         <li><strong>Lasso Mode:</strong> Click and drag to draw a lasso around points you want to select</li>
+        <li>Hover over points to see detailed information including name, gender, origin, etymology, and selected attribute</li>
         <li>Selected names will show their birth trends in the right plot</li>
         <li>Click "Clear" to reset selection or "Reset Zoom" to return to original view</li>
       </ul>
@@ -958,7 +1279,7 @@
           <strong>Names:</strong>
           <div class="names-list">
             {#each selectedPoints as point}
-              <span class="name-tag">{point.Name}</span>
+              <span class="name-tag" title="{getGenderDisplay(point)} - {point.origin || 'Unknown origin'}">{point.Name}</span>
             {/each}
           </div>
         </div>
@@ -989,7 +1310,7 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
 
-  .file-selector {
+  .file-selector, .attribute-selector {
     width: 100%;
     padding: 15px;
     background: #e8f4fd;
@@ -998,13 +1319,18 @@
     margin-bottom: 20px;
   }
 
-  .file-selector label {
+  .attribute-selector {
+    background: #f8f9fa;
+    border-left: 4px solid #6f42c1;
+  }
+
+  .file-selector label, .attribute-selector label {
     display: block;
     margin-bottom: 8px;
     color: #333;
   }
 
-  .file-selector select {
+  .file-selector select, .attribute-selector select {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -1013,7 +1339,7 @@
     background: white;
   }
 
-  .file-info {
+  .file-info, .attribute-info {
     margin-top: 8px;
     font-size: 12px;
     color: #666;
@@ -1084,6 +1410,7 @@
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 12px;
+    cursor: help;
   }
 
   :global(.point) {
@@ -1164,4 +1491,4 @@
   .control-btn:active {
     transform: translateY(0);
   }
-  </style>
+</style>
