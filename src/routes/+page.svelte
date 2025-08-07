@@ -344,19 +344,31 @@
     // Add hover effects and tooltips
     points
       .on("mouseenter", function(event, d) {
+        // Store reference to this point for tooltip stability
+        d3.select(this).attr("data-hovering", "true");
+        
         // Calculate current scaled radius based on zoom
         const baseRadius = 4;
-        const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+        const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
         
-        // Set hover radius to 2x the current scaled size
-        d3.select(this).attr("r", scaledRadius * 2);
+        // Set hover radius to 1.5x the current scaled size
+        d3.select(this).attr("r", scaledRadius * 1.5);
+        
+        // Remove any existing tooltips first
+        svg.selectAll(".tooltip").remove();
         
         // Create tooltip
         const tooltip = svg.append("g")
           .attr("class", "tooltip")
           .style("pointer-events", "none");
         
-        const [mouseX, mouseY] = d3.pointer(event, svg.node());
+        // Use the current position of the circle for tooltip positioning
+        const circleX = parseFloat(d3.select(this).attr("cx"));
+        const circleY = parseFloat(d3.select(this).attr("cy"));
+        
+        // Offset tooltip to avoid covering the point
+        const tooltipX = circleX;
+        const tooltipY = circleY - scaledRadius * 2 - 10;
         
         // Create enhanced tooltip text with name, coordinates, gender, and selected attribute
         const gender = getGenderDisplay(d);
@@ -383,8 +395,8 @@
         // Add text lines
         const textElements = tooltipLines.map((line, i) => {
           return textGroup.append("text")
-            .attr("x", mouseX)
-            .attr("y", mouseY - 15 + (i * 16))
+            .attr("x", tooltipX)
+            .attr("y", tooltipY + (i * 16))
             .attr("text-anchor", "middle")
             .style("font-size", i === 0 ? "14px" : "12px")
             .style("font-weight", i === 0 ? "bold" : "normal")
@@ -424,13 +436,16 @@
           .attr("rx", 4);
       })
       .on("mouseleave", function(event, d) {
+        // Remove hover flag
+        d3.select(this).attr("data-hovering", null);
+        
         // Calculate current scaled radius based on zoom
         const baseRadius = 4;
-        const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+        const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
         
         // Reset radius based on selection state and current zoom
         const isSelected = selectedPoints.includes(d);
-        const newRadius = isSelected ? scaledRadius * 1.5 : scaledRadius;
+        const newRadius = isSelected ? scaledRadius * 1.2 : scaledRadius;
         d3.select(this).attr("r", newRadius);
         
         // Remove tooltip
@@ -474,9 +489,9 @@
         xAxisGroup.call(d3.axisBottom(newXScale));
         yAxisGroup.call(d3.axisLeft(newYScale));
         
-        // Calculate scaled point size (inverse relationship with zoom)
+        // Calculate scaled point size (direct relationship with zoom - bigger when zoomed in)
         const baseRadius = 4;
-        const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+        const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
         
         // Position points according to their rescaled coordinates (not transform the group)
         pointsGroup.selectAll(".point")
@@ -485,15 +500,15 @@
           .each(function(d) {
             const isSelected = selectedPoints.includes(d);
             const currentRadius = parseFloat(d3.select(this).attr("r"));
-            const isHovered = currentRadius > scaledRadius * 1.5; // Detect if currently hovered
+            const isHovered = currentRadius > scaledRadius * 1.2; // Detect if currently hovered
             
             let newRadius;
             if (isHovered) {
-              // Maintain hover effect (2x the current scaled size)
-              newRadius = scaledRadius * 2;
-            } else if (isSelected) {
-              // Selected points are 1.5x the scaled size
+              // Maintain hover effect (1.5x the current scaled size)
               newRadius = scaledRadius * 1.5;
+            } else if (isSelected) {
+              // Selected points are 1.2x the scaled size
+              newRadius = scaledRadius * 1.2;
             } else {
               // Normal points use scaled size
               newRadius = scaledRadius;
@@ -503,7 +518,7 @@
           });
         
         // Apply collision detection for overlapping points at high zoom
-        if (currentTransform.k > 3) {
+        if (currentTransform.k > 2) {
           // Get current rescaled positions for collision detection
           const transformedData = data.map(d => ({
             ...d,
@@ -604,9 +619,9 @@
 
       selectedPoints = selected;
       
-      // Calculate current scaled radius for selection styling
+      // Calculate current scaled radius based on zoom
       const baseRadius = 4;
-      const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+      const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
       
       pointsGroup.selectAll(".point")
         .attr("stroke", d => selected.includes(d) ? "#ff6b6b" : "#333")
@@ -615,10 +630,10 @@
           // Update radius based on selection state and current zoom
           const currentRadius = parseFloat(d3.select(this).attr("r"));
           const isSelected = selected.includes(d);
-          const isHovered = currentRadius > scaledRadius * 1.5;
+          const isHovered = currentRadius > scaledRadius * 1.2;
           
           if (!isHovered) {
-            const newRadius = isSelected ? scaledRadius * 1.5 : scaledRadius;
+            const newRadius = isSelected ? scaledRadius * 1.2 : scaledRadius;
             d3.select(this).attr("r", newRadius);
           }
         });
@@ -644,7 +659,7 @@
           
           // Calculate current scaled radius based on zoom
           const baseRadius = 4;
-          const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+          const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
           
           pointsGroup.selectAll(".point")
             .attr("stroke", "#333")
@@ -652,7 +667,7 @@
             .each(function(d) {
               // Preserve hover state
               const currentRadius = parseFloat(d3.select(this).attr("r"));
-              const isHovered = currentRadius > scaledRadius * 1.5;
+              const isHovered = currentRadius > scaledRadius * 1.2;
               if (!isHovered) {
                 d3.select(this).attr("r", scaledRadius);
               }
@@ -718,7 +733,7 @@
       
       // Calculate current scaled radius based on zoom
       const baseRadius = 4;
-      const scaledRadius = Math.max(1, baseRadius / Math.sqrt(currentTransform.k));
+      const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
       
       pointsGroup.selectAll(".point")
         .attr("stroke", "#333")
@@ -726,7 +741,7 @@
         .each(function(d) {
           // Preserve hover state
           const currentRadius = parseFloat(d3.select(this).attr("r"));
-          const isHovered = currentRadius > scaledRadius * 1.5;
+          const isHovered = currentRadius > scaledRadius * 1.2;
           if (!isHovered) {
             d3.select(this).attr("r", scaledRadius);
           }
@@ -749,7 +764,7 @@
                const isHovered = parseFloat(d3.select(this).attr("r")) > 6;
                
                if (!isHovered) {
-                 d3.select(this).attr("r", isSelected ? 6 : 4);
+                 d3.select(this).attr("r", isSelected ? 5 : 4);
                }
              });
          });
@@ -1261,7 +1276,7 @@
         <li>Select a data file from the first dropdown above</li>
         <li>Choose an attribute to color the points by from the second dropdown</li>
         <li><strong>Mode Toggle:</strong> Click "🔍 Zoom/Pan" to zoom and pan, or "🎯 Lasso Select" to draw selections</li>
-        <li><strong>Zoom Mode:</strong> Mouse wheel to zoom, click and drag to pan (points separate when zoomed in)</li>
+        <li><strong>Zoom Mode:</strong> Mouse wheel to zoom, click and drag to pan (points get larger when zoomed in)</li>
         <li><strong>Lasso Mode:</strong> Click and drag to draw a lasso around points you want to select</li>
         <li>Hover over points to see detailed information including name, gender, origin, etymology, and selected attribute</li>
         <li>Selected names will show their birth trends in the right plot</li>
