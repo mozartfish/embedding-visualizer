@@ -10,6 +10,7 @@
   let data = [];
   let selectedFile = 'umap-name-etymology.json';
   let selectedAttribute = 'total_births'; // Default attribute for coloring
+  let selectedTooltipAttribute = 'total_births'; // Default tooltip attribute
   
   // Zoom and interaction variables
   let zoomBehavior;
@@ -35,7 +36,7 @@
     'umap-origin.json'
   ];
 
-  // Available attributes for coloring
+  // Available attributes for coloring and tooltips
   const availableAttributes = [
     { value: 'total_births', label: 'Total Births', type: 'numeric' },
     { value: 'avg_births_per_year', label: 'Avg Births per Year', type: 'numeric' },
@@ -131,7 +132,7 @@
   };
 
   // Simplified collision detection for high zoom levels
-  const adjustPointPositionsSimple = (transformedData, zoomScale, pointRadius = 4) => {
+  const adjustPointPositionsSimple = (transformedData, zoomScale, pointRadius = 2.67) => {
     const minDistance = Math.max(pointRadius * 2, (pointRadius * 2) / Math.sqrt(zoomScale));
     const nodes = transformedData.map(d => ({ ...d }));
     
@@ -335,7 +336,7 @@
       .attr("class", "point")
       .attr("cx", d => xScale(d.x))
       .attr("cy", d => yScale(d.y))
-      .attr("r", 4)
+      .attr("r", 2.67) // 1.5x smaller than original 4
       .attr("fill", d => colorScale(getAttributeValue(d, selectedAttribute)))
       .attr("stroke", "#333")
       .attr("stroke-width", 1)
@@ -347,12 +348,14 @@
         // Store reference to this point for tooltip stability
         d3.select(this).attr("data-hovering", "true");
         
-        // Calculate current scaled radius based on zoom
-        const baseRadius = 4;
+        // Calculate current scaled radius based on zoom (keep size consistent)
+        const baseRadius = 2.67; // Updated base radius
         const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
         
-        // Set hover radius to 1.5x the current scaled size
-        d3.select(this).attr("r", scaledRadius * 1.5);
+        // Don't change radius on hover - just add visual feedback through stroke
+        d3.select(this)
+          .attr("stroke-width", 3)
+          .style("stroke", "#ff6b6b");
         
         // Remove any existing tooltips first
         svg.selectAll(".tooltip").remove();
@@ -370,22 +373,23 @@
         const tooltipX = circleX;
         const tooltipY = circleY - scaledRadius * 2 - 10;
         
-        // Create enhanced tooltip text with name, coordinates, gender, and selected attribute
-        const gender = getGenderDisplay(d);
-        const attrValue = getAttributeValue(d, selectedAttribute);
-        const attrLabel = availableAttributes.find(attr => attr.value === selectedAttribute)?.label || selectedAttribute;
+        // Create enhanced tooltip text with name, coordinates, and selected tooltip attribute
+        const tooltipAttrValue = getAttributeValue(d, selectedTooltipAttribute);
+        const tooltipAttrLabel = availableAttributes.find(attr => attr.value === selectedTooltipAttribute)?.label || selectedTooltipAttribute;
         
-        let formattedAttrValue = attrValue;
-        if (typeof attrValue === 'number') {
-          formattedAttrValue = attrValue.toLocaleString();
+        let formattedTooltipValue = tooltipAttrValue;
+        if (typeof tooltipAttrValue === 'number') {
+          // Format percentages differently
+          if (selectedTooltipAttribute.includes('pct')) {
+            formattedTooltipValue = (tooltipAttrValue * 100).toFixed(2) + '%';
+          } else {
+            formattedTooltipValue = tooltipAttrValue.toLocaleString();
+          }
         }
         
         const tooltipLines = [
           d.Name,
-          `Gender: ${gender}`,
-          `${attrLabel}: ${formattedAttrValue}`,
-          `Origin: ${d.origin || 'Unknown'}`,
-          `Etymology: ${d.etymology || 'Unknown'}`,
+          `${tooltipAttrLabel}: ${formattedTooltipValue}`,
           `(${d.x.toFixed(2)}, ${d.y.toFixed(2)})`
         ];
         
@@ -439,14 +443,11 @@
         // Remove hover flag
         d3.select(this).attr("data-hovering", null);
         
-        // Calculate current scaled radius based on zoom
-        const baseRadius = 4;
-        const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
-        
-        // Reset radius based on selection state and current zoom
+        // Reset stroke to original values based on selection state
         const isSelected = selectedPoints.includes(d);
-        const newRadius = isSelected ? scaledRadius * 1.2 : scaledRadius;
-        d3.select(this).attr("r", newRadius);
+        d3.select(this)
+          .attr("stroke-width", isSelected ? 3 : 1)
+          .style("stroke", isSelected ? "#ff6b6b" : "#333");
         
         // Remove tooltip
         svg.select(".tooltip").remove();
@@ -490,32 +491,14 @@
         yAxisGroup.call(d3.axisLeft(newYScale));
         
         // Calculate scaled point size (direct relationship with zoom - bigger when zoomed in)
-        const baseRadius = 4;
+        const baseRadius = 2.67; // Updated base radius
         const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
         
         // Position points according to their rescaled coordinates (not transform the group)
         pointsGroup.selectAll(".point")
           .attr("cx", d => newXScale(d.x)) // Use rescaled position
           .attr("cy", d => newYScale(d.y)) // Use rescaled position
-          .each(function(d) {
-            const isSelected = selectedPoints.includes(d);
-            const currentRadius = parseFloat(d3.select(this).attr("r"));
-            const isHovered = currentRadius > scaledRadius * 1.2; // Detect if currently hovered
-            
-            let newRadius;
-            if (isHovered) {
-              // Maintain hover effect (1.5x the current scaled size)
-              newRadius = scaledRadius * 1.5;
-            } else if (isSelected) {
-              // Selected points are 1.2x the scaled size
-              newRadius = scaledRadius * 1.2;
-            } else {
-              // Normal points use scaled size
-              newRadius = scaledRadius;
-            }
-            
-            d3.select(this).attr("r", newRadius);
-          });
+          .attr("r", scaledRadius); // Set consistent radius for all points based on zoom level
         
         // Apply collision detection for overlapping points at high zoom
         if (currentTransform.k > 2) {
@@ -619,24 +602,10 @@
 
       selectedPoints = selected;
       
-      // Calculate current scaled radius based on zoom
-      const baseRadius = 4;
-      const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
-      
+      // Update stroke to show selection (don't change radius)
       pointsGroup.selectAll(".point")
         .attr("stroke", d => selected.includes(d) ? "#ff6b6b" : "#333")
-        .attr("stroke-width", d => selected.includes(d) ? 3 : 1)
-        .each(function(d) {
-          // Update radius based on selection state and current zoom
-          const currentRadius = parseFloat(d3.select(this).attr("r"));
-          const isSelected = selected.includes(d);
-          const isHovered = currentRadius > scaledRadius * 1.2;
-          
-          if (!isHovered) {
-            const newRadius = isSelected ? scaledRadius * 1.2 : scaledRadius;
-            d3.select(this).attr("r", newRadius);
-          }
-        });
+        .attr("stroke-width", d => selected.includes(d) ? 3 : 1);
 
       updateTrendPlot();
 
@@ -657,21 +626,10 @@
         if (previousMode === 'lasso') {
           selectedPoints = [];
           
-          // Calculate current scaled radius based on zoom
-          const baseRadius = 4;
-          const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
-          
+          // Reset stroke to default (don't change radius)
           pointsGroup.selectAll(".point")
             .attr("stroke", "#333")
-            .attr("stroke-width", 1)
-            .each(function(d) {
-              // Preserve hover state
-              const currentRadius = parseFloat(d3.select(this).attr("r"));
-              const isHovered = currentRadius > scaledRadius * 1.2;
-              if (!isHovered) {
-                d3.select(this).attr("r", scaledRadius);
-              }
-            });
+            .attr("stroke-width", 1);
           updateTrendPlot();
         }
         
@@ -731,21 +689,10 @@
     function clearSelection() {
       selectedPoints = [];
       
-      // Calculate current scaled radius based on zoom
-      const baseRadius = 4;
-      const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
-      
+      // Reset stroke to default (don't change radius)
       pointsGroup.selectAll(".point")
         .attr("stroke", "#333")
-        .attr("stroke-width", 1)
-        .each(function(d) {
-          // Preserve hover state
-          const currentRadius = parseFloat(d3.select(this).attr("r"));
-          const isHovered = currentRadius > scaledRadius * 1.2;
-          if (!isHovered) {
-            d3.select(this).attr("r", scaledRadius);
-          }
-        });
+        .attr("stroke-width", 1);
       updateTrendPlot();
     }
 
@@ -754,19 +701,11 @@
          .duration(500)
          .call(zoomBehavior.transform, d3.zoomIdentity)
          .on("end", () => {
-           // Reset point positions to original scale positions
+           // Reset point positions to original scale positions and base radius
            pointsGroup.selectAll(".point")
              .attr("cx", d => xScale(d.x))
              .attr("cy", d => yScale(d.y))
-             .each(function(d) {
-               // Reset to base radius and preserve selection state
-               const isSelected = selectedPoints.includes(d);
-               const isHovered = parseFloat(d3.select(this).attr("r")) > 6;
-               
-               if (!isHovered) {
-                 d3.select(this).attr("r", isSelected ? 5 : 4);
-               }
-             });
+             .attr("r", 2.67); // Reset to base radius
          });
     }
 
@@ -1209,6 +1148,12 @@
     updateTrendPlot();
   };
 
+  // Handle tooltip attribute selection change
+  const handleTooltipAttributeChange = async (event) => {
+    selectedTooltipAttribute = event.target.value;
+    // No need to reinitialize the plot, tooltips will use the new attribute on next hover
+  };
+
   onMount(async () => {
     await loadData();
   });
@@ -1269,16 +1214,27 @@
       </select>
       <p class="attribute-info">Points colored by: {availableAttributes.find(attr => attr.value === selectedAttribute)?.label || selectedAttribute}</p>
     </div>
+
+    <div class="tooltip-selector">
+      <label for="tooltip-select"><strong>Tooltip Attribute:</strong></label>
+      <select id="tooltip-select" bind:value={selectedTooltipAttribute} on:change={handleTooltipAttributeChange}>
+        {#each availableAttributes as attr}
+          <option value={attr.value}>{attr.label}</option>
+        {/each}
+      </select>
+      <p class="tooltip-info">Tooltip shows: {availableAttributes.find(attr => attr.value === selectedTooltipAttribute)?.label || selectedTooltipAttribute}</p>
+    </div>
     
     <div class="instructions">
       <h3>Instructions:</h3>
       <ul>
         <li>Select a data file from the first dropdown above</li>
         <li>Choose an attribute to color the points by from the second dropdown</li>
+        <li>Choose what additional attribute to show in tooltips from the third dropdown</li>
         <li><strong>Mode Toggle:</strong> Click "🔍 Zoom/Pan" to zoom and pan, or "🎯 Lasso Select" to draw selections</li>
         <li><strong>Zoom Mode:</strong> Mouse wheel to zoom, click and drag to pan (points get larger when zoomed in)</li>
         <li><strong>Lasso Mode:</strong> Click and drag to draw a lasso around points you want to select</li>
-        <li>Hover over points to see detailed information including name, gender, origin, etymology, and selected attribute</li>
+        <li>Hover over points to see name, coordinates, and the selected tooltip attribute</li>
         <li>Selected names will show their birth trends in the right plot</li>
         <li>Click "Clear" to reset selection or "Reset Zoom" to return to original view</li>
       </ul>
@@ -1325,7 +1281,7 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
 
-  .file-selector, .attribute-selector {
+  .file-selector, .attribute-selector, .tooltip-selector {
     width: 100%;
     padding: 15px;
     background: #e8f4fd;
@@ -1339,13 +1295,18 @@
     border-left: 4px solid #6f42c1;
   }
 
-  .file-selector label, .attribute-selector label {
+  .tooltip-selector {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+  }
+
+  .file-selector label, .attribute-selector label, .tooltip-selector label {
     display: block;
     margin-bottom: 8px;
     color: #333;
   }
 
-  .file-selector select, .attribute-selector select {
+  .file-selector select, .attribute-selector select, .tooltip-selector select {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -1354,7 +1315,7 @@
     background: white;
   }
 
-  .file-info, .attribute-info {
+  .file-info, .attribute-info, .tooltip-info {
     margin-top: 8px;
     font-size: 12px;
     color: #666;
@@ -1429,11 +1390,7 @@
   }
 
   :global(.point) {
-    transition: all 0.2s ease;
-  }
-
-  :global(.point:hover) {
-    r: 6;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease;
   }
 
   :global(.legend text) {
