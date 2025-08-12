@@ -20,6 +20,11 @@
   let maxDecade = 2020;
   let sliderValue = 0; // 0 = 'all', 1+ = index in availableDecades array
   
+  // Animation variables
+  let isPlaying = false;
+  let animationInterval = null;
+  let animationSpeed = 1000; // milliseconds between steps
+  
   // Zoom and interaction variables
   let zoomBehavior;
   let currentTransform = d3.zoomIdentity;
@@ -298,15 +303,6 @@
       .style("font-size", "16px")
       .style("font-weight", "bold")
       .text(`UMAP Embeddings - ${selectedAttrLabel}`);
-
-    // Add subtitle with size/color info
-    svg.append("text")
-      .attr("x", width / 2)
-      .attr("y", 35)
-      .attr("text-anchor", "middle")
-      .style("font-size", "12px")
-      .style("fill", "#666")
-      .text(`Size: ${availableAttributes.find(attr => attr.value === selectedSizeAttribute)?.label || selectedSizeAttribute} | Color: ${selectedAttrLabel} | Use slider to highlight decades (3x size)`);
 
     // Add color legend for all attributes (both numeric and categorical)
     addColorLegend(svg, colorScale, selectedAttrLabel, width, height, selectedAttribute);
@@ -1283,6 +1279,9 @@
           selectedDecade = 'all';
           sliderValue = 0;
           
+          // Stop any running animation
+          pauseAnimation();
+          
           currentTransform = d3.zoomIdentity;
           
           initializeUMAPPlot();
@@ -1363,6 +1362,64 @@
     updatePointSizes();
   };
 
+  // Animation control functions
+  const togglePlay = () => {
+    if (isPlaying) {
+      pauseAnimation();
+    } else {
+      startAnimation();
+    }
+  };
+
+  const startAnimation = () => {
+    isPlaying = true;
+    animationInterval = setInterval(() => {
+      // Move to next decade
+      sliderValue = (sliderValue + 1) % (availableDecades.length + 1);
+      
+      if (sliderValue === 0) {
+        selectedDecade = 'all';
+      } else {
+        selectedDecade = availableDecades[sliderValue - 1];
+      }
+      
+      updatePointSizes();
+      
+      // Update the slider visual position
+      const sliderElement = document.getElementById('decade-slider-control');
+      if (sliderElement) {
+        sliderElement.value = sliderValue;
+      }
+    }, animationSpeed);
+  };
+
+  const pauseAnimation = () => {
+    isPlaying = false;
+    if (animationInterval) {
+      clearInterval(animationInterval);
+      animationInterval = null;
+    }
+  };
+
+  const resetAnimation = () => {
+    pauseAnimation();
+    sliderValue = 0;
+    selectedDecade = 'all';
+    updatePointSizes();
+    
+    // Update the slider visual position
+    const sliderElement = document.getElementById('decade-slider-control');
+    if (sliderElement) {
+      sliderElement.value = sliderValue;
+    }
+  };
+
+  // Cleanup animation on component unmount
+  import { onDestroy } from 'svelte';
+  onDestroy(() => {
+    pauseAnimation();
+  });
+
   onMount(async () => {
     await loadData();
   });
@@ -1421,6 +1478,43 @@
               bind:value={sliderValue}
               on:input={handleSliderChange}
             />
+          </div>
+          
+          <!-- Animation Controls -->
+          <div class="animation-controls">
+            <button 
+              class="animation-btn play-pause-btn {isPlaying ? 'pause' : 'play'}"
+              on:click={togglePlay}
+              disabled={availableDecades.length === 0}
+            >
+              {#if isPlaying}
+                ⏸️ Pause
+              {:else}
+                ▶️ Play
+              {/if}
+            </button>
+            
+            <button 
+              class="animation-btn reset-btn"
+              on:click={resetAnimation}
+              disabled={availableDecades.length === 0}
+            >
+              ⏹️ Reset
+            </button>
+            
+            <div class="speed-control">
+              <label for="speed-select">Speed:</label>
+              <select 
+                id="speed-select" 
+                bind:value={animationSpeed}
+                disabled={availableDecades.length === 0}
+              >
+                <option value={2000}>Slow (2s)</option>
+                <option value={1000}>Normal (1s)</option>
+                <option value={500}>Fast (0.5s)</option>
+                <option value={250}>Very Fast (0.25s)</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -1600,6 +1694,86 @@
     cursor: pointer;
     border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  /* Animation Controls */
+  .animation-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .animation-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+
+  .play-pause-btn {
+    background: #28a745;
+    color: white;
+    min-width: 80px;
+  }
+
+  .play-pause-btn.pause {
+    background: #ffc107;
+    color: #333;
+  }
+
+  .play-pause-btn:hover {
+    background: #218838;
+  }
+
+  .play-pause-btn.pause:hover {
+    background: #e0a800;
+  }
+
+  .animation-btn.reset-btn {
+    background: #6c757d;
+    color: white;
+  }
+
+  .animation-btn.reset-btn:hover {
+    background: #545b62;
+  }
+
+  .animation-btn:disabled {
+    background: #e9ecef;
+    color: #6c757d;
+    cursor: not-allowed;
+  }
+
+  .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .speed-control label {
+    color: #495057;
+    font-weight: 500;
+  }
+
+  .speed-control select {
+    padding: 4px 6px;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    font-size: 11px;
+    background: white;
+  }
+
+  .speed-control select:disabled {
+    background: #e9ecef;
+    color: #6c757d;
   }
 
   .decade-slider::-moz-range-thumb {
