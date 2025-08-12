@@ -9,8 +9,16 @@
   let isLassoing = false;
   let data = [];
   let selectedFile = 'umap-name-etymology.json';
-  let selectedAttribute = 'total_births'; // Default attribute for coloring
+  let selectedAttribute = 'peak_decade'; // Default attribute for coloring
+  let selectedSizeAttribute = 'total_births'; // Default attribute for sizing
   let selectedTooltipAttribute = 'total_births'; // Default tooltip attribute
+  
+  // Decade slider variables
+  let selectedDecade = 'all'; // 'all' or specific decade
+  let availableDecades = [];
+  let minDecade = 1880;
+  let maxDecade = 2020;
+  let sliderValue = 0; // 0 = 'all', 1+ = index in availableDecades array
   
   // Zoom and interaction variables
   let zoomBehavior;
@@ -58,11 +66,11 @@
 
   // Sample data - replace with your actual JSON data
   const sampleData = [
-    { "Name":"Abby", "1976":256.0, "1977":142.0, "1978":312.0, "1979":791.0, "1980":467.5, "1981":608.5, "1982":653.0, "1983":657.5, "1984":1263.0, "1985":607.5, "x":8.6866903305, "y":3.9082963467, "total_births":5000, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Hebrew", "etymology":"father's joy" },
-    { "Name":"Abel", "1976":395.0, "1977":347.0, "1978":371.0, "1979":217.0, "1980":240.0, "1981":242.0, "1982":467.0, "1983":217.5, "1984":427.0, "1985":461.0, "x":6.3117189407, "y":2.1993675232, "total_births":3200, "is_male":true, "is_female":false, "is_unisex":false, "origin":"Hebrew", "etymology":"breath" },
-    { "Name":"Abigail", "1976":417.5, "1977":795.0, "1978":1010.0, "1979":1225.0, "1980":793.0, "1981":911.0, "1982":946.5, "1983":961.0, "1984":924.5, "1985":930.5, "x":8.9767932892, "y":3.9221160412, "total_births":8500, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Hebrew", "etymology":"father's joy" },
-    { "Name":"Aaron", "1976":1205.0, "1977":1089.0, "1978":1052.0, "1979":1031.0, "1980":1012.0, "1981":995.0, "1982":982.0, "1983":975.0, "1984":968.0, "1985":962.0, "x":5.2345678901, "y":1.8765432109, "total_births":12000, "is_male":true, "is_female":false, "is_unisex":false, "origin":"Hebrew", "etymology":"high mountain" },
-    { "Name":"Ada", "1976":45.0, "1977":52.0, "1978":48.0, "1979":51.0, "1980":49.0, "1981":53.0, "1982":56.0, "1983":58.0, "1984":62.0, "1985":65.0, "x":9.1234567890, "y":4.5678901234, "total_births":500, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Germanic", "etymology":"noble" }
+    { "Name":"Abby", "1976":256.0, "1977":142.0, "1978":312.0, "1979":791.0, "1980":467.5, "1981":608.5, "1982":653.0, "1983":657.5, "1984":1263.0, "1985":607.5, "x":8.6866903305, "y":3.9082963467, "total_births":5000, "avg_births_per_year":125.0, "births_std":400.5, "peak_births":1263, "first_year":1976, "last_year":1985, "total_active_years":10, "year_span":9, "avg_popularity_pct":0.05, "peak_popularity_pct":0.15, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Hebrew", "etymology":"father's joy", "peak_decade":1980, "name_length":4, "vowel_count":2 },
+    { "Name":"Abel", "1976":395.0, "1977":347.0, "1978":371.0, "1979":217.0, "1980":240.0, "1981":242.0, "1982":467.0, "1983":217.5, "1984":427.0, "1985":461.0, "x":6.3117189407, "y":2.1993675232, "total_births":3200, "avg_births_per_year":80.0, "births_std":150.2, "peak_births":467, "first_year":1976, "last_year":1985, "total_active_years":10, "year_span":9, "avg_popularity_pct":0.03, "peak_popularity_pct":0.08, "is_male":true, "is_female":false, "is_unisex":false, "origin":"Hebrew", "etymology":"breath", "peak_decade":1980, "name_length":4, "vowel_count":2 },
+    { "Name":"Abigail", "1976":417.5, "1977":795.0, "1978":1010.0, "1979":1225.0, "1980":793.0, "1981":911.0, "1982":946.5, "1983":961.0, "1984":924.5, "1985":930.5, "x":8.9767932892, "y":3.9221160412, "total_births":8500, "avg_births_per_year":212.5, "births_std":250.8, "peak_births":1225, "first_year":1976, "last_year":1985, "total_active_years":10, "year_span":9, "avg_popularity_pct":0.09, "peak_popularity_pct":0.25, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Hebrew", "etymology":"father's joy", "peak_decade":1980, "name_length":7, "vowel_count":4 },
+    { "Name":"Aaron", "1976":1205.0, "1977":1089.0, "1978":1052.0, "1979":1031.0, "1980":1012.0, "1981":995.0, "1982":982.0, "1983":975.0, "1984":968.0, "1985":962.0, "x":5.2345678901, "y":1.8765432109, "total_births":12000, "avg_births_per_year":300.0, "births_std":100.5, "peak_births":1205, "first_year":1976, "last_year":1985, "total_active_years":10, "year_span":9, "avg_popularity_pct":0.12, "peak_popularity_pct":0.30, "is_male":true, "is_female":false, "is_unisex":false, "origin":"Hebrew", "etymology":"high mountain", "peak_decade":1980, "name_length":5, "vowel_count":3 },
+    { "Name":"Ada", "1976":45.0, "1977":52.0, "1978":48.0, "1979":51.0, "1980":49.0, "1981":53.0, "1982":56.0, "1983":58.0, "1984":62.0, "1985":65.0, "x":9.1234567890, "y":4.5678901234, "total_births":500, "avg_births_per_year":12.5, "births_std":5.8, "peak_births":65, "first_year":1976, "last_year":1985, "total_active_years":10, "year_span":9, "avg_popularity_pct":0.005, "peak_popularity_pct":0.01, "is_male":false, "is_female":true, "is_unisex":false, "origin":"Germanic", "etymology":"noble", "peak_decade":1980, "name_length":3, "vowel_count":2 }
   ];
 
   // Helper function to determine gender display
@@ -82,6 +90,54 @@
     return d[attribute];
   };
 
+  // Function to calculate decades from data
+  const calculateDecades = (data) => {
+    if (!data || data.length === 0) return [];
+    
+    const decades = new Set();
+    data.forEach(d => {
+      if (d.peak_decade && d.peak_decade !== -1) {
+        decades.add(d.peak_decade);
+      }
+    });
+    
+    return Array.from(decades).sort((a, b) => a - b);
+  };
+
+  // Function to get point radius based on decade selection and size attribute
+  const getPointRadius = (d, baseRadius = 2.67) => {
+    // Get size based on selected size attribute
+    let sizeValue = getAttributeValue(d, selectedSizeAttribute);
+    if (typeof sizeValue !== 'number' || isNaN(sizeValue)) {
+      sizeValue = 1; // Default size for invalid values
+    }
+    
+    // Scale the size value to a reasonable range (similar to Python's MinMaxScaler)
+    const allSizeValues = data.map(item => {
+      const val = getAttributeValue(item, selectedSizeAttribute);
+      return typeof val === 'number' && !isNaN(val) ? val : 0;
+    }).filter(val => val > 0);
+    
+    if (allSizeValues.length === 0) {
+      baseRadius = 2.67;
+    } else {
+      const minSize = Math.min(...allSizeValues);
+      const maxSize = Math.max(...allSizeValues);
+      
+      // Normalize to range [0.5, 3] for base radius multiplier
+      const normalizedSize = maxSize > minSize ? 
+        0.5 + 2.5 * ((sizeValue - minSize) / (maxSize - minSize)) : 1;
+      baseRadius = baseRadius * normalizedSize;
+    }
+    
+    // Apply decade highlighting (3x size if decade matches)
+    if (selectedDecade !== 'all' && d.peak_decade === parseInt(selectedDecade)) {
+      return baseRadius * 3;
+    }
+    
+    return baseRadius;
+  };
+
   // Create color scale based on selected attribute
   const createColorScale = (data, attribute) => {
     const attributeInfo = availableAttributes.find(attr => attr.value === attribute);
@@ -94,12 +150,14 @@
       const values = [...new Set(data.map(d => getAttributeValue(d, attribute)).filter(v => v != null))];
       return d3.scaleOrdinal(d3.schemeCategory10).domain(values);
     } else {
-      // Numeric
+      // Numeric - use YlGnBu_r color scheme like Python (reversed YlGnBu)
       const values = data.map(d => getAttributeValue(d, attribute)).filter(v => v != null && !isNaN(v));
       if (values.length === 0) {
         return d3.scaleOrdinal(d3.schemeCategory10);
       }
-      return d3.scaleSequential(d3.interpolateViridis).domain(d3.extent(values));
+      // Use YlGnBu but reversed (from light yellow to dark blue, but we want dark blue to light yellow)
+      const domain = d3.extent(values);
+      return d3.scaleSequential(t => d3.interpolateYlGnBu(1 - t)).domain(domain);
     }
   };
 
@@ -158,76 +216,6 @@
     }
     
     return nodes;
-  };
-
-  const adjustPointPositions = (data, transform, xScale, yScale) => {
-    const nodes = data.map(d => ({
-      ...d,
-      x: transform.rescaleX(xScale)(d.x),
-      y: transform.rescaleY(yScale)(d.y),
-      originalX: d.x,
-      originalY: d.y,
-      fx: null,
-      fy: null
-    }));
-
-    // Calculate minimum distance based on zoom level
-    const minDistance = Math.max(8, 12 / transform.k);
-    
-    // Check for overlaps and apply force simulation if needed
-    const overlaps = checkForOverlaps(nodes, minDistance);
-    
-    if (overlaps.length === 0) {
-      return nodes; // No overlaps, return original positions
-    }
-
-    // Create force simulation for overlapping points only
-    const overlappingNodes = new Set();
-    overlaps.forEach(([i, j]) => {
-      overlappingNodes.add(nodes[i]);
-      overlappingNodes.add(nodes[j]);
-    });
-
-    if (overlappingNodes.size === 0) return nodes;
-
-    const simulationNodes = Array.from(overlappingNodes);
-    
-    // Run a quick force simulation
-    const forceSimulation = d3.forceSimulation(simulationNodes)
-      .force("collision", d3.forceCollide().radius(minDistance / 2))
-      .force("center", d3.forceCenter().strength(0.1))
-      .alphaDecay(0.3)
-      .stop();
-
-    // Run simulation for a fixed number of iterations
-    for (let i = 0; i < 50; ++i) forceSimulation.tick();
-
-    // Update positions in the main nodes array
-    simulationNodes.forEach(simNode => {
-      const originalNode = nodes.find(n => n.Name === simNode.Name);
-      if (originalNode) {
-        originalNode.x = simNode.x;
-        originalNode.y = simNode.y;
-      }
-    });
-
-    return nodes;
-  };
-
-  const checkForOverlaps = (nodes, minDistance) => {
-    const overlaps = [];
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[i].x - nodes[j].x;
-        const dy = nodes[i].y - nodes[j].y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance < minDistance) {
-          overlaps.push([i, j]);
-        }
-      }
-    }
-    return overlaps;
   };
 
   const initializeUMAPPlot = () => {
@@ -302,13 +290,26 @@
 
     // Add title
     const selectedAttrLabel = availableAttributes.find(attr => attr.value === selectedAttribute)?.label || selectedAttribute;
+    const decadeText = selectedDecade === 'all' ? 'All Decades' : `${selectedDecade}s Highlighted (3x size)`;
     svg.append("text")
       .attr("x", width / 2)
       .attr("y", 20)
       .attr("text-anchor", "middle")
       .style("font-size", "16px")
       .style("font-weight", "bold")
-      .text(`UMAP Embeddings - Colored by ${selectedAttrLabel}`);
+      .text(`UMAP Embeddings - ${selectedAttrLabel}`);
+
+    // Add subtitle with size/color info
+    svg.append("text")
+      .attr("x", width / 2)
+      .attr("y", 35)
+      .attr("text-anchor", "middle")
+      .style("font-size", "12px")
+      .style("fill", "#666")
+      .text(`Size: ${availableAttributes.find(attr => attr.value === selectedSizeAttribute)?.label || selectedSizeAttribute} | Color: ${selectedAttrLabel} | Use slider to highlight decades (3x size)`);
+
+    // Add color legend for all attributes (both numeric and categorical)
+    addColorLegend(svg, colorScale, selectedAttrLabel, width, height, selectedAttribute);
 
     // Create a clipping path to constrain zoom area
     svg.append("defs")
@@ -336,10 +337,13 @@
       .attr("class", "point")
       .attr("cx", d => xScale(d.x))
       .attr("cy", d => yScale(d.y))
-      .attr("r", 2.67) // 1.5x smaller than original 4
-      .attr("fill", d => colorScale(getAttributeValue(d, selectedAttribute)))
+      .attr("r", d => getPointRadius(d)) // Use decade-based radius
+      .attr("fill", d => {
+        const value = getAttributeValue(d, selectedAttribute);
+        return colorScale(value);
+      })
       .attr("stroke", "#333")
-      .attr("stroke-width", 1)
+      .attr("stroke-width", 0.3) // Thinner stroke like Python plot
       .style("cursor", "pointer");
 
     // Add hover effects and tooltips
@@ -349,7 +353,7 @@
         d3.select(this).attr("data-hovering", "true");
         
         // Calculate current scaled radius based on zoom (keep size consistent)
-        const baseRadius = 2.67; // Updated base radius
+        const baseRadius = getPointRadius(d); // Use decade-based radius
         const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
         
         // Don't change radius on hover - just add visual feedback through stroke
@@ -390,6 +394,9 @@
         const tooltipLines = [
           d.Name,
           `${tooltipAttrLabel}: ${formattedTooltipValue}`,
+          `Size (${availableAttributes.find(attr => attr.value === selectedSizeAttribute)?.label}): ${getAttributeValue(d, selectedSizeAttribute)}`,
+          `Color (${selectedAttrLabel}): ${getAttributeValue(d, selectedAttribute)}`,
+          `Peak Decade: ${d.peak_decade || 'Unknown'}`,
           `(${d.x.toFixed(2)}, ${d.y.toFixed(2)})`
         ];
         
@@ -490,15 +497,15 @@
         xAxisGroup.call(d3.axisBottom(newXScale));
         yAxisGroup.call(d3.axisLeft(newYScale));
         
-        // Calculate scaled point size (direct relationship with zoom - bigger when zoomed in)
-        const baseRadius = 2.67; // Updated base radius
-        const scaledRadius = Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
-        
         // Position points according to their rescaled coordinates (not transform the group)
         pointsGroup.selectAll(".point")
           .attr("cx", d => newXScale(d.x)) // Use rescaled position
           .attr("cy", d => newYScale(d.y)) // Use rescaled position
-          .attr("r", scaledRadius); // Set consistent radius for all points based on zoom level
+          .attr("r", d => {
+            // Calculate scaled point size (direct relationship with zoom - bigger when zoomed in)
+            const baseRadius = getPointRadius(d); // Use decade-based radius
+            return Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
+          });
         
         // Apply collision detection for overlapping points at high zoom
         if (currentTransform.k > 2) {
@@ -511,8 +518,11 @@
             originalY: d.y
           }));
           
+          // Use max radius for collision detection
+          const maxRadius = Math.max(...data.map(d => getPointRadius(d) * Math.sqrt(currentTransform.k)));
+          
           // Check for overlaps and adjust if needed (using scaled radius for collision detection)
-          const adjustedPositions = adjustPointPositionsSimple(transformedData, currentTransform.k, scaledRadius);
+          const adjustedPositions = adjustPointPositionsSimple(transformedData, currentTransform.k, maxRadius);
           
           // Apply adjusted positions
           pointsGroup.selectAll(".point")
@@ -701,16 +711,168 @@
          .duration(500)
          .call(zoomBehavior.transform, d3.zoomIdentity)
          .on("end", () => {
-           // Reset point positions to original scale positions and base radius
+           // Reset point positions to original scale positions and decade-based radius
            pointsGroup.selectAll(".point")
              .attr("cx", d => xScale(d.x))
              .attr("cy", d => yScale(d.y))
-             .attr("r", 2.67); // Reset to base radius
+             .attr("r", d => getPointRadius(d)); // Use decade-based radius
          });
     }
 
     // Initialize in zoom mode
     setInteractionMode('zoom');
+  };
+
+  // Function to add color legend for both numeric and categorical attributes
+  const addColorLegend = (svg, colorScale, attributeLabel, width, height, attributeType) => {
+    const legendX = width - 120;
+    const legendY = 70;
+
+    // Remove any existing legend
+    svg.selectAll(".color-legend").remove();
+
+    // Create legend group
+    const legendGroup = svg.append("g").attr("class", "color-legend");
+
+    // Add legend title
+    legendGroup.append("text")
+      .attr("x", legendX + 50)
+      .attr("y", legendY - 10)
+      .attr("text-anchor", "middle")
+      .style("font-size", "12px")
+      .style("font-weight", "bold")
+      .text(attributeLabel);
+
+    const attributeInfo = availableAttributes.find(attr => attr.value === attributeType);
+    
+    if (attributeInfo && attributeInfo.type === 'numeric') {
+      // Numeric legend (gradient bar)
+      const legendWidth = 20;
+      const legendHeight = 150;
+
+      // Create gradient definition
+      const defs = svg.select("defs").empty() ? svg.append("defs") : svg.select("defs");
+      
+      // Remove existing gradient
+      defs.select("#color-legend-gradient").remove();
+      
+      const gradient = defs.append("linearGradient")
+        .attr("id", "color-legend-gradient")
+        .attr("x1", "0%")
+        .attr("y1", "100%")
+        .attr("x2", "0%")
+        .attr("y2", "0%");
+
+      const domain = colorScale.domain();
+      const numStops = 10;
+      for (let i = 0; i <= numStops; i++) {
+        const value = domain[0] + (domain[1] - domain[0]) * (i / numStops);
+        gradient.append("stop")
+          .attr("offset", `${(i / numStops) * 100}%`)
+          .attr("stop-color", colorScale(value));
+      }
+
+      // Add legend rectangle
+      legendGroup.append("rect")
+        .attr("x", legendX + 40)
+        .attr("y", legendY)
+        .attr("width", legendWidth)
+        .attr("height", legendHeight)
+        .style("fill", "url(#color-legend-gradient)")
+        .style("stroke", "#333")
+        .style("stroke-width", 0.5);
+
+      // Add legend scale
+      const legendScale = d3.scaleLinear()
+        .domain(domain)
+        .range([legendY + legendHeight, legendY]);
+
+      const legendAxis = d3.axisRight(legendScale)
+        .ticks(5)
+        .tickFormat(d => {
+          if (attributeLabel.toLowerCase().includes('decade')) {
+            return d3.format(".0f")(d) + 's';
+          } else if (attributeLabel.toLowerCase().includes('pct') || attributeLabel.toLowerCase().includes('percentage')) {
+            return d3.format(".1%")(d);
+          }
+          return d3.format(".0f")(d);
+        });
+
+      legendGroup.append("g")
+        .attr("transform", `translate(${legendX + 40 + legendWidth}, 0)`)
+        .call(legendAxis)
+        .style("font-size", "10px");
+
+    } else {
+      // Categorical legend (color swatches with labels)
+      const uniqueValues = [...new Set(data.map(d => getAttributeValue(d, attributeType)).filter(v => v != null))];
+      const maxItems = 8; // Limit number of legend items to prevent overcrowding
+      const displayValues = uniqueValues.slice(0, maxItems);
+      
+      const itemHeight = 18;
+      const swatchSize = 12;
+
+      displayValues.forEach((value, i) => {
+        const y = legendY + (i * itemHeight);
+        
+        // Add color swatch
+        legendGroup.append("rect")
+          .attr("x", legendX)
+          .attr("y", y - swatchSize/2)
+          .attr("width", swatchSize)
+          .attr("height", swatchSize)
+          .attr("fill", colorScale(value))
+          .attr("stroke", "#333")
+          .attr("stroke-width", 0.5);
+
+        // Add label
+        let displayText = String(value);
+        if (displayText.length > 12) {
+          displayText = displayText.substring(0, 10) + '...';
+        }
+        
+        legendGroup.append("text")
+          .attr("x", legendX + swatchSize + 6)
+          .attr("y", y)
+          .attr("dy", "0.35em")
+          .style("font-size", "11px")
+          .style("fill", "#333")
+          .text(displayText);
+      });
+
+      // Add "..." if there are more items
+      if (uniqueValues.length > maxItems) {
+        const y = legendY + (maxItems * itemHeight);
+        legendGroup.append("text")
+          .attr("x", legendX)
+          .attr("y", y)
+          .attr("dy", "0.35em")
+          .style("font-size", "11px")
+          .style("fill", "#666")
+          .style("font-style", "italic")
+          .text(`... and ${uniqueValues.length - maxItems} more`);
+      }
+    }
+  };
+
+  // Function to update point sizes based on decade selection
+  const updatePointSizes = () => {
+    const svg = d3.select(mainSvg);
+    const pointsGroup = svg.select('.points-group');
+    
+    if (pointsGroup.empty()) return;
+    
+    // Update point radii based on current decade selection
+    pointsGroup.selectAll(".point")
+      .transition()
+      .duration(300)
+      .attr("r", d => {
+        const baseRadius = getPointRadius(d);
+        // Apply zoom scaling if currently zoomed
+        return Math.max(baseRadius, baseRadius * Math.sqrt(currentTransform.k));
+      });
+    
+    // Don't update title anymore - keep it simple without decade info
   };
 
   const updateTrendPlot = () => {
@@ -1108,6 +1270,19 @@
           data = jsonData;
           console.log(`Loaded ${data.length} data points from ${filename}`);
           
+          // Calculate available decades from the loaded data
+          availableDecades = calculateDecades(data);
+          
+          // Set min and max decades for slider
+          if (availableDecades.length > 0) {
+            minDecade = Math.min(...availableDecades);
+            maxDecade = Math.max(...availableDecades);
+          }
+          
+          // Reset decade selection when loading new data
+          selectedDecade = 'all';
+          sliderValue = 0;
+          
           currentTransform = d3.zoomIdentity;
           
           initializeUMAPPlot();
@@ -1115,12 +1290,22 @@
         } else {
           console.error('Data does not have expected structure');
           data = sampleData;
+          availableDecades = calculateDecades(data);
+          if (availableDecades.length > 0) {
+            minDecade = Math.min(...availableDecades);
+            maxDecade = Math.max(...availableDecades);
+          }
           initializeUMAPPlot();
           updateTrendPlot();
         }
       } else {
         console.error('Data is not a valid array');
         data = sampleData;
+        availableDecades = calculateDecades(data);
+        if (availableDecades.length > 0) {
+          minDecade = Math.min(...availableDecades);
+          maxDecade = Math.max(...availableDecades);
+        }
         initializeUMAPPlot();
         updateTrendPlot();
       }
@@ -1128,6 +1313,11 @@
       console.error('Error loading data:', error);
       console.log('Falling back to sample data');
       data = sampleData;
+      availableDecades = calculateDecades(data);
+      if (availableDecades.length > 0) {
+        minDecade = Math.min(...availableDecades);
+        maxDecade = Math.max(...availableDecades);
+      }
       initializeUMAPPlot();
       updateTrendPlot();
     }
@@ -1148,10 +1338,29 @@
     updateTrendPlot();
   };
 
+  // Handle size attribute selection change
+  const handleSizeAttributeChange = async (event) => {
+    selectedSizeAttribute = event.target.value;
+    selectedPoints = [];
+    initializeUMAPPlot();
+    updateTrendPlot();
+  };
+
   // Handle tooltip attribute selection change
   const handleTooltipAttributeChange = async (event) => {
     selectedTooltipAttribute = event.target.value;
     // No need to reinitialize the plot, tooltips will use the new attribute on next hover
+  };
+
+  // Handle decade slider change
+  const handleSliderChange = (event) => {
+    sliderValue = parseInt(event.target.value);
+    if (sliderValue === 0) {
+      selectedDecade = 'all';
+    } else {
+      selectedDecade = availableDecades[sliderValue - 1];
+    }
+    updatePointSizes();
   };
 
   onMount(async () => {
@@ -1166,26 +1375,54 @@
       
       <!-- Control buttons below the visualization -->
       <div class="controls-panel">
-        <button 
-          class="control-btn zoom-mode-btn active" 
-          on:click={() => window.setInteractionMode && window.setInteractionMode('zoom')}>
-          🔍 Zoom/Pan
-        </button>
-        <button 
-          class="control-btn lasso-mode-btn" 
-          on:click={() => window.setInteractionMode && window.setInteractionMode('lasso')}>
-          🎯 Lasso Select
-        </button>
-        <button 
-          class="control-btn clear-btn" 
-          on:click={() => window.clearSelection && window.clearSelection()}>
-          Clear Selection
-        </button>
-        <button 
-          class="control-btn reset-btn" 
-          on:click={() => window.resetZoom && window.resetZoom()}>
-          Reset Zoom
-        </button>
+        <div class="control-row">
+          <button 
+            class="control-btn zoom-mode-btn active" 
+            on:click={() => window.setInteractionMode && window.setInteractionMode('zoom')}>
+            🔍 Zoom/Pan
+          </button>
+          <button 
+            class="control-btn lasso-mode-btn" 
+            on:click={() => window.setInteractionMode && window.setInteractionMode('lasso')}>
+            🎯 Lasso Select
+          </button>
+          <button 
+            class="control-btn clear-btn" 
+            on:click={() => window.clearSelection && window.clearSelection()}>
+            Clear Selection
+          </button>
+          <button 
+            class="control-btn reset-btn" 
+            on:click={() => window.resetZoom && window.resetZoom()}>
+            Reset Zoom
+          </button>
+        </div>
+        
+        <!-- Decade Slider in Control Panel -->
+        <div class="slider-row">
+          <label for="decade-slider-control" class="slider-control-label">
+            <strong>Highlight Decade (3x size):</strong>
+          </label>
+          <div class="slider-control-container">
+            <span class="decade-display">
+              {#if selectedDecade === 'all'}
+                All Decades
+              {:else}
+                {selectedDecade}s
+              {/if}
+            </span>
+            <input 
+              type="range" 
+              id="decade-slider-control"
+              class="decade-slider-control"
+              min="0" 
+              max={availableDecades.length} 
+              step="1"
+              bind:value={sliderValue}
+              on:input={handleSliderChange}
+            />
+          </div>
+        </div>
       </div>
     </div>
     
@@ -1215,6 +1452,16 @@
       <p class="attribute-info">Points colored by: {availableAttributes.find(attr => attr.value === selectedAttribute)?.label || selectedAttribute}</p>
     </div>
 
+    <div class="size-selector">
+      <label for="size-select"><strong>Size Points By:</strong></label>
+      <select id="size-select" bind:value={selectedSizeAttribute} on:change={handleSizeAttributeChange}>
+        {#each availableAttributes as attr}
+          <option value={attr.value}>{attr.label}</option>
+        {/each}
+      </select>
+      <p class="size-info">Point sizes based on: {availableAttributes.find(attr => attr.value === selectedSizeAttribute)?.label || selectedSizeAttribute}</p>
+    </div>
+
     <div class="tooltip-selector">
       <label for="tooltip-select"><strong>Tooltip Attribute:</strong></label>
       <select id="tooltip-select" bind:value={selectedTooltipAttribute} on:change={handleTooltipAttributeChange}>
@@ -1230,11 +1477,13 @@
       <ul>
         <li>Select a data file from the first dropdown above</li>
         <li>Choose an attribute to color the points by from the second dropdown</li>
-        <li>Choose what additional attribute to show in tooltips from the third dropdown</li>
+        <li>Choose an attribute to size the points by from the third dropdown</li>
+        <li>Choose what additional attribute to show in tooltips from the fourth dropdown</li>
+        <li><strong>New:</strong> Use the decade slider in the control panel to highlight names that peaked in specific decades (makes points 3x larger)</li>
         <li><strong>Mode Toggle:</strong> Click "🔍 Zoom/Pan" to zoom and pan, or "🎯 Lasso Select" to draw selections</li>
         <li><strong>Zoom Mode:</strong> Mouse wheel to zoom, click and drag to pan (points get larger when zoomed in)</li>
         <li><strong>Lasso Mode:</strong> Click and drag to draw a lasso around points you want to select</li>
-        <li>Hover over points to see name, coordinates, and the selected tooltip attribute</li>
+        <li>Hover over points to see name, coordinates, peak decade, and the selected tooltip attribute</li>
         <li>Selected names will show their birth trends in the right plot</li>
         <li>Click "Clear" to reset selection or "Reset Zoom" to return to original view</li>
       </ul>
@@ -1242,6 +1491,10 @@
     
     <div class="stats">
       <p><strong>Selected Names:</strong> {selectedPoints.length}</p>
+      <p><strong>Decade Highlighting:</strong> {selectedDecade === 'all' ? 'None' : selectedDecade + 's'}</p>
+      {#if selectedDecade !== 'all'}
+        <p><strong>Highlighted Points:</strong> {data.filter(d => d.peak_decade === parseInt(selectedDecade)).length}</p>
+      {/if}
       {#if isLassoing}
         <p class="status">Drawing lasso...</p>
       {/if}
@@ -1250,7 +1503,7 @@
           <strong>Names:</strong>
           <div class="names-list">
             {#each selectedPoints as point}
-              <span class="name-tag" title="{getGenderDisplay(point)} - {point.origin || 'Unknown origin'}">{point.Name}</span>
+              <span class="name-tag" title="{getGenderDisplay(point)} - {point.origin || 'Unknown origin'} - Peak: {point.peak_decade || 'Unknown'}s">{point.Name}</span>
             {/each}
           </div>
         </div>
@@ -1281,7 +1534,7 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
 
-  .file-selector, .attribute-selector, .tooltip-selector {
+  .file-selector, .attribute-selector, .tooltip-selector, .decade-selector {
     width: 100%;
     padding: 15px;
     background: #e8f4fd;
@@ -1300,13 +1553,18 @@
     border-left: 4px solid #ffc107;
   }
 
-  .file-selector label, .attribute-selector label, .tooltip-selector label {
+  .decade-selector {
+    background: #d1ecf1;
+    border-left: 4px solid #0c5460;
+  }
+
+  .file-selector label, .attribute-selector label, .tooltip-selector label, .decade-selector label {
     display: block;
     margin-bottom: 8px;
     color: #333;
   }
 
-  .file-selector select, .attribute-selector select, .tooltip-selector select {
+  .decade-selector select {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -1315,7 +1573,84 @@
     background: white;
   }
 
-  .file-info, .attribute-info, .tooltip-info {
+  /* Decade Slider Styles */
+  .slider-container {
+    position: relative;
+    margin: 10px 0;
+  }
+
+  .decade-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: #ddd;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .decade-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #0c5460;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .decade-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #0c5460;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .decade-slider::-webkit-slider-track {
+    height: 8px;
+    border-radius: 4px;
+    background: #ddd;
+  }
+
+  .decade-slider::-moz-range-track {
+    height: 8px;
+    border-radius: 4px;
+    background: #ddd;
+    border: none;
+  }
+
+  .slider-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-size: 12px;
+    color: #666;
+  }
+
+  .slider-label {
+    font-weight: 500;
+  }
+
+  .slider-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+    font-size: 10px;
+    color: #999;
+    padding: 0 10px;
+  }
+
+  .tick {
+    position: relative;
+  }
+
+  .file-info, .attribute-info, .tooltip-info, .decade-info, .decade-range {
     margin-top: 8px;
     font-size: 12px;
     color: #666;
@@ -1399,11 +1734,83 @@
 
   .controls-panel {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     gap: 10px;
-    padding: 10px;
+    padding: 15px;
     background: #f8f9fa;
     border-top: 1px solid #ddd;
+  }
+
+  .control-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+  }
+
+  .slider-control-label {
+    font-size: 12px;
+    color: #333;
+    margin-bottom: 5px;
+  }
+
+  .slider-control-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .decade-display {
+    font-size: 12px;
+    font-weight: bold;
+    color: #0c5460;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  .decade-slider-control {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: #ddd;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .decade-slider-control::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #0c5460;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .decade-slider-control::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #0c5460;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
 
   .control-btn {
